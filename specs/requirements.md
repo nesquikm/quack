@@ -17,6 +17,7 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 - **Tenancy model:** Multi-tenant. Every memory write and read is scoped by the `project_id` resolved from the request's token; the graph DB is partitioned per project. A token for `(user_a, project_x)` MUST NOT read or write any data in `project_y`. Cross-project queries are not exposed at the API or MCP boundary in v1.
 - **Project membership:** A project can have multiple users; a user can belong to multiple projects. Membership is tracked in `auth.sqlite` `project_members(user_id, project_id, role)`. Admin-only MCP tools (`add_member`, `remove_member`) manage the table. Removing a member revokes their token(s) for that project but does not affect their access to other projects.
 - **Management surface:** User and project lifecycle is managed via MCP tools, not a web UI or separate REST endpoints. The tools (`register_user`, `remove_user`, `create_project`, `delete_project`, `add_member`, `remove_member`, `revoke_token`, `list_projects`, `list_users`) are exposed by the same MCP server, gated to admin tokens. Non-admin tokens calling a management tool ⇒ HTTP 403.
+- **Cheap-model API access:** The server reads `QUACK_MODEL_API_KEY` (secret bearer for the OpenAI-compatible endpoint) and `QUACK_MODEL_BASE_URL` (e.g., `https://api.anthropic.com/v1`, `https://api.openai.com/v1`, `http://localhost:11434/v1`) at startup. These are **server-wide** — all projects share the same model account / billing. The key is read from environment only, never persisted to `auth.sqlite` and never written to logs. Both vars are *optional in M2* (extractor is not yet wired) and *required from M3* (first extractor call). Per-project override is out of scope in v1 and may be added additively later.
 - **Network surface:** Both endpoints bind to `127.0.0.1` inside the container by default. Exposure beyond localhost is an explicit per-deployment opt-in via Compose port mapping (Tailscale, reverse proxy, etc.). The bootstrap admin token MUST NOT be logged.
 - **Deployment surface:** Quack ships as a Docker Compose stack. One required service (`quack`, the Bun runtime hosting ingest + MCP + extractor in one process); zero or one optional graph-DB service depending on the eventual graph-DB choice (embedded ⇒ omitted; daemon ⇒ included). A named volume holds `auth.sqlite` and any embedded graph data. `docker compose up` from a clone is the canonical install path.
 - **Fire-and-forget hook contract:** Every Claude Code hook handler returns within < 200 ms and never blocks on the cheap-model extractor. Hooks enqueue locally and acknowledge; extraction runs asynchronously inside the `quack` process.
@@ -36,6 +37,7 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 - Recalled memory content treated as untrusted (per cross-cutting FR above).
 - Redaction policy applied to outbound hook payloads.
 - Tokens hashed at rest (SHA-256); plaintext shown once at issuance only.
+- `QUACK_MODEL_API_KEY` never logged; redacted by the same logger pass that strips `Authorization:` headers. Rotation = restart with new env value.
 
 ### NFR-3: Availability
 - Personal/team-tool scope — no formal SLO. The system MUST fail open from Claude Code's perspective: ingest server unreachable ⇒ hooks drop silently, never block.
@@ -57,6 +59,7 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | Cross-tenant data exfiltration | Stolen token for project A used to query project B | Token → `(user_id, project_id)` lookup at middleware; all DB queries scoped by `project_id`; no cross-project read API exists |
 | Privilege escalation to admin | Non-admin token calls `register_user` / `create_project` | MCP middleware checks `role = 'admin'` before dispatching management tools; 403 otherwise |
 | Token theft from logs | Server logs `Authorization` header verbatim | Bearer-stripping middleware on log writer; explicit unit test that no log line contains the token |
+| Model API key leakage | `QUACK_MODEL_API_KEY` echoed in logs or error responses | Same logger redaction pass strips the parsed env value; never include in error bodies; documented `docker secrets` for prod deployments |
 | Server reachable from untrusted network | Misconfigured port mapping exposes container externally | Default bind to `127.0.0.1`; documented as opt-in to expose; ops responsibility for reverse-proxy hardening |
 
 ## 5. Out of Scope (v1)

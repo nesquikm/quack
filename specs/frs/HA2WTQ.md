@@ -28,6 +28,7 @@ The cheap-model extractor, full ingest pipeline, MCP tool dispatch, and graph DB
 - AC-HA2WTQ.5: `GET /health` returns 200 `{ ok: true, version }` without invoking `AuthMiddleware`. `POST /ingest` and `POST /mcp` invoke `AuthMiddleware`; on success they return 204 in this FR (real handlers land later). Both endpoints bind to `127.0.0.1` only — explicit unit test confirms a request from a non-loopback origin is refused at bind time, not at request time.
 - AC-HA2WTQ.6: Server logger strips any header named `authorization` (case-insensitive) from every log record. Explicit test: log a request containing a known bearer; assert no log line contains the token plaintext or its base64url-decoded form.
 - AC-HA2WTQ.7: Auth-check latency at p95 is < 5 ms measured over 1000 sequential requests against a 100-user / 10-project / 50-token seeded `auth.sqlite` (benchmark test).
+- AC-HA2WTQ.8: `src/shared/env.ts` parses `QUACK_MODEL_API_KEY` (optional string) and `QUACK_MODEL_BASE_URL` (optional string). The logger's redaction pass strips any log line containing the parsed `QUACK_MODEL_API_KEY` value (same mechanism as Authorization-header stripping). Unit test: log a stub error message containing the env value; assert the value does not appear in the output buffer. Both vars are optional in M2 (extractor not wired); FR scope here is only the env-schema declaration + redaction, no extractor consumer.
 
 ## Technical Design
 
@@ -39,7 +40,7 @@ The cheap-model extractor, full ingest pipeline, MCP tool dispatch, and graph DB
 - **`src/auth/bootstrap.ts`** — `bootstrapAdmin(db, env): void` called once during startup, after migrations. `SELECT COUNT(*) FROM users`; if zero and env var present, runs a single transaction creating user/project/member/token rows. If zero and env var absent, throws `BootstrapError` to halt startup. If non-zero, exits silently (env var ignored).
 - **`src/server/index.ts`** — Bun HTTP server. Three routes: `GET /health`, `POST /ingest`, `POST /mcp`. Both POST routes delegate to `AuthMiddleware`; 204 on success, 401 on failure. Bind to `127.0.0.1:${PORT}` (default 7474).
 - **`src/shared/logger.ts`** — minimal structured logger. Authorization-stripping pass runs on every record write.
-- **`src/shared/env.ts`** — Zod schema for env: `PORT` (default 7474), `QUACK_BOOTSTRAP_TOKEN` (optional; required on first boot), `QUACK_DATA_DIR` (default `/data` in container, `./data` in dev). Throws on schema violation.
+- **`src/shared/env.ts`** — Zod schema for env: `PORT` (default 7474), `QUACK_BOOTSTRAP_TOKEN` (optional; required on first boot), `QUACK_DATA_DIR` (default `/data` in container, `./data` in dev), `QUACK_MODEL_API_KEY` (optional in M2; required from M3 once the extractor is wired), `QUACK_MODEL_BASE_URL` (optional; OpenAI-compatible endpoint URL, e.g. `https://api.anthropic.com/v1`). Throws on schema violation.
 
 ### Dependencies added
 - `zod` (runtime).
@@ -58,7 +59,7 @@ The cheap-model extractor, full ingest pipeline, MCP tool dispatch, and graph DB
 - `src/auth/bootstrap.test.ts` — first-boot creates 4 rows transactionally; second boot is a no-op; missing env var on first boot throws `BootstrapError`.
 - `src/auth/middleware.test.ts` — happy path; missing header; malformed header (no `Bearer ` prefix); unknown hash; revoked token (`revoked_at` set); all four failure modes return *byte-identical* 401 body (no length / no field-order leak).
 - `src/server/index.test.ts` — integration: `/health` no auth; `/ingest` and `/mcp` 401 without token, 204 with valid token, 401 with revoked token; binds to `127.0.0.1` only.
-- `src/shared/logger.test.ts` — log line with `Authorization: Bearer abc123` does NOT contain `abc123` (or its decoded form) in the output buffer.
+- `src/shared/logger.test.ts` — log line with `Authorization: Bearer abc123` does NOT contain `abc123` (or its decoded form) in the output buffer; additionally, logging a stub message that embeds the `QUACK_MODEL_API_KEY` value does NOT include that value in the buffer (AC-HA2WTQ.8 redaction).
 - `src/auth/middleware.bench.test.ts` — seeded DB; 1000 sequential auth checks; p95 < 5 ms. Tag with a slow-runner guard.
 
 ## Notes

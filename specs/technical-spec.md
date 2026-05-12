@@ -159,6 +159,16 @@ MCP tool dispatcher checks `request.context.role === 'admin'` against a **static
 
 A crash between step 1 and 2 leaves a `pending_cleanup` row that a daily reconciliation sweep drains. The graph partition is the slower operation; making it post-commit keeps the SQLite transaction short.
 
+### Secrets handling
+
+Secrets currently in scope:
+
+- `QUACK_BOOTSTRAP_TOKEN` — consumed once at first bootstrap (FR-HA2WTQ §4); ignored on subsequent boots.
+- `QUACK_MODEL_API_KEY` — consumed by the extractor on every cheap-model call (M3+). Optional in M2.
+- `QUACK_MODEL_BASE_URL` — configuration (not a secret), but treated identically by `src/shared/env.ts`. Optional in M2.
+
+All read once at startup via `src/shared/env.ts` (Zod schema; throws on violation). The logger's redaction pass (FR-HA2WTQ §6) MUST strip both the `Authorization:` header value AND any log line containing the literal parsed `QUACK_MODEL_API_KEY` value — same mechanism, two redaction sources. Rotation = restart with new env value (no in-place rotation in v1).
+
 ### State Management
 In-process queue for extraction: a bounded async ring buffer (capacity ~10k entries) drained by a single consumer task that calls the cheap-model API and writes via `GraphAdapter`. Backpressure ⇒ `POST /ingest` returns 202 with `{ accepted: false, reason: 'queue_full' }` after a soft cap; never blocks the hook handler. Concrete capacity tuned during M2 implementation.
 
