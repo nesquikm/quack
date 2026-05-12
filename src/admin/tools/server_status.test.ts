@@ -1,0 +1,79 @@
+import { describe, test, expect, beforeEach } from "bun:test";
+import { Database } from "bun:sqlite";
+import { runMigrations } from "../../auth/sqlite/schema";
+import { bootstrapAdmin } from "../../auth/bootstrap";
+import { serverStatus } from "./server_status";
+import { incrementError, resetCountersForTests } from "../../metrics/counters";
+import { registerUser } from "./register_user";
+
+const adminCtx = { user_id: 1, project_id: 1, role: "admin" as const };
+
+function seededDb(): Database {
+  const db = new Database(":memory:");
+  runMigrations(db);
+  bootstrapAdmin(db, { QUACK_BOOTSTRAP_TOKEN: "boot" });
+  return db;
+}
+
+describe("serverStatus", () => {
+  beforeEach(() => resetCountersForTests());
+
+  test("returns version literal v1", () => {
+    const db = seededDb();
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.version).toBe("v1");
+  });
+
+  test("uptime_seconds is non-negative integer", () => {
+    const db = seededDb();
+    const snap = serverStatus({}, adminCtx, db);
+    expect(Number.isInteger(snap.uptime_seconds)).toBe(true);
+    expect(snap.uptime_seconds).toBeGreaterThanOrEqual(0);
+  });
+
+  test("M2 queue fields are all null", () => {
+    const db = seededDb();
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.queue).toEqual({
+      depth: null,
+      oldest_pending_age_seconds: null,
+      accepted_total: null,
+      dropped_full_total: null,
+    });
+  });
+
+  test("counts reflect seeded DB", () => {
+    const db = seededDb();
+    registerUser({ username: "alice" }, adminCtx, db);
+    registerUser({ username: "bob" }, adminCtx, db);
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.counts.users).toBe(3);
+    expect(snap.counts.projects).toBe(1);
+    expect(snap.counts.tokens_active).toBe(3);
+    expect(typeof snap.counts.server_version).toBe("string");
+  });
+
+  test("tokens_active excludes revoked tokens", () => {
+    const db = seededDb();
+    db.run("UPDATE tokens SET revoked_at = datetime('now') WHERE id = 1");
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.counts.tokens_active).toBe(0);
+  });
+
+  test("errors reflect counters", () => {
+    const db = seededDb();
+    incrementError("auth_401");
+    incrementError("auth_401");
+    incrementError("admin_403");
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.errors.since_boot_total).toBe(3);
+    expect(snap.errors.by_category).toEqual({ auth_401: 2, admin_403: 1 });
+  });
+
+  test("unknown error category appears in by_category without schema break", () => {
+    const db = seededDb();
+    incrementError("future_category");
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.errors.by_category["future_category"]).toBe(1);
+  });
+});

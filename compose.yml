@@ -1,0 +1,38 @@
+# Quack — personal memory layer for Claude Code.
+# Compose v2 (`docker compose`) is required; v1 (`docker-compose`) is NOT supported.
+#
+# Bring up:        docker compose up -d
+# Bring up + graph: docker compose --profile daemon-graph up -d
+# Tear down + vols: docker compose down --volumes
+
+services:
+  quack:
+    build:
+      context: .
+    # Loopback-only bind: container is NOT reachable from non-loopback by default.
+    # To expose externally, replace with `0.0.0.0:7474:7474` and front it with your
+    # own reverse proxy / Tailscale / SSH tunnel.
+    ports:
+      - "127.0.0.1:7474:7474"
+    env_file:
+      - .env
+    volumes:
+      - quack-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:7474/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Optional graph-DB daemon — pinned once a concrete engine is chosen.
+  graphdb:
+    # TODO: pin once graph DB chosen (Kùzu / Neo4j / Memgraph / SQLite-with-edges).
+    image: alpine:3.20
+    command: ["sh", "-c", "echo 'graph DB placeholder — not yet implemented'; sleep infinity"]
+    profiles: [daemon-graph]
+    restart: unless-stopped
+
+volumes:
+  quack-data:

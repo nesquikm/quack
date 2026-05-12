@@ -83,7 +83,10 @@ bunx tsc --noEmit && bun test
 - **Framework:** `bun test` (APIs auto-imported from `"bun:test"`)
 - **Mocking:** `mock()` / `spyOn()` from `bun:test`
 - **File naming:** `*.test.ts`
-- **Layout:** src/-co-located
+- **Layout:** src/-co-located (default). **Override:** ops tests that exercise
+  external tools (Docker, Compose) live under top-level `tests/` — landed for
+  FR-BKPM28. Those tests skip when the relevant tool's daemon is unreachable
+  so local Bun-only runs stay green.
 - **Coverage target:** TBD — set once the first non-trivial module lands
 
 ## DO NOT

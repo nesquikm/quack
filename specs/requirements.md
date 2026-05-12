@@ -79,3 +79,27 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 
 | Requirement | Implementation | Tests |
 |-------------|---------------|-------|
+| AC-HA2WTQ.1 (auth.sqlite schema + idempotent migrations) | `src/auth/sqlite/schema.ts` | `src/auth/sqlite/schema.test.ts` |
+| AC-HA2WTQ.2 (token primitives) | `src/auth/tokens.ts` | `src/auth/tokens.test.ts` |
+| AC-HA2WTQ.3 (bootstrap admin) | `src/auth/bootstrap.ts` | `src/auth/bootstrap.test.ts` |
+| AC-HA2WTQ.4 (AuthMiddleware + uniform 401) | `src/auth/middleware.ts` | `src/auth/middleware.test.ts` |
+| AC-HA2WTQ.5 (HTTP routes + 127.0.0.1 bind) | `src/server/index.ts` | `src/server/index.test.ts`, `src/server/bind.test.ts` |
+| AC-HA2WTQ.6 + AC-HA2WTQ.8 (logger redaction) | `src/shared/logger.ts` | `src/shared/logger.test.ts` |
+| AC-HA2WTQ.7 (auth p95 < 5 ms) | `src/auth/middleware.ts` | `src/auth/middleware.bench.test.ts` |
+| AC-HA2WTQ.8 (env schema) | `src/shared/env.ts` | `src/shared/env.test.ts` |
+| AC-WSFVNP.1 (MCP mount + admin gate) | `src/mcp/server.ts`, `src/mcp/dispatch.ts` | `src/mcp/server.test.ts`, `src/mcp/dispatch.test.ts` |
+| AC-WSFVNP.2 (register_user) | `src/admin/tools/register_user.ts` | `src/admin/tools/register_user.test.ts` |
+| AC-WSFVNP.3 (remove_user) | `src/admin/tools/remove_user.ts` | `src/admin/tools/remove_user.test.ts` |
+| AC-WSFVNP.4 + AC-WSFVNP.5 (create/delete project) | `src/admin/tools/create_project.ts`, `src/admin/tools/delete_project.ts` | `src/admin/tools/create_project.test.ts`, `src/admin/tools/delete_project.test.ts` |
+| AC-WSFVNP.6 + AC-WSFVNP.7 (add/remove member) | `src/admin/tools/add_member.ts`, `src/admin/tools/remove_member.ts` | `src/admin/tools/add_member.test.ts`, `src/admin/tools/remove_member.test.ts` |
+| AC-WSFVNP.8 (revoke_token) | `src/admin/tools/revoke_token.ts` | `src/admin/tools/revoke_token.test.ts` |
+| AC-WSFVNP.9 (list_projects / list_users) | `src/admin/tools/list_projects.ts`, `src/admin/tools/list_users.ts` | `src/admin/tools/list_projects.test.ts`, `src/admin/tools/list_users.test.ts` |
+| AC-WSFVNP.10 + AC-WSFVNP.11 (zod schemas + DTO mappers) | `src/admin/dto.ts`, per-tool zod schemas | per-tool tests + `src/mcp/dispatch.test.ts` |
+| AC-956DT2.1–6 (server_status shape, admin-only, null queue) | `src/admin/tools/server_status.ts`, `src/admin/index.ts` | `src/admin/tools/server_status.test.ts` |
+| AC-956DT2.7 + AC-956DT2.8 (counters + 401/403 wiring) | `src/metrics/counters.ts`, `src/auth/middleware.ts`, `src/mcp/dispatch.ts` | `src/metrics/counters.test.ts`, `src/admin/tools/server_status.integration.test.ts` |
+| AC-956DT2.9 (server_status p95 < 50 ms) | `src/admin/tools/server_status.ts` | `src/admin/tools/server_status.bench.test.ts` |
+| AC-BKPM28.1, 7, 8 (Dockerfile, non-root, < 200 MB) | `Dockerfile`, `.dockerignore` | `tests/docker-build.test.ts`, `tests/docker-run.test.ts`, `tests/compose-config.test.ts` |
+| AC-BKPM28.2, 4 (compose.yml + loopback) | `compose.yml` | `tests/compose-config.test.ts` |
+| AC-BKPM28.3 (.env.example) | `.env.example` | `tests/compose-config.test.ts` |
+| AC-BKPM28.5 (README deployment) | `README.md` | `tests/compose-config.test.ts` |
+| AC-BKPM28.6 (`docker compose up` healthy in 30 s) | `Dockerfile`, `compose.yml` | `tests/docker-run.test.ts` (skipped when daemon absent) |
