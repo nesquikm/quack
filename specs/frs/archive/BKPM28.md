@@ -1,8 +1,8 @@
 ---
 title: Docker Compose deployment (Dockerfile, compose.yml, .env.example)
 milestone: M2
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-12T17:07:13Z
 id: fr_01KREG3A740JKRS25T5HBKPM28
 created_at: 2026-05-12T19:30:00Z
 ---
@@ -63,3 +63,8 @@ A new top-level `tests/` directory holds ops-style tests that can't be co-locate
 - Non-root user (`uid 1000`) is intentional defense-in-depth — a container escape is still constrained. The data volume must be `chown`ed at image-build time so the runtime user can write to it.
 - `.dockerignore` excluding `*.md` is deliberate — specs and BRIEF aren't needed in the image and would bust the layer cache on every edit. README is host-side only.
 - An override of the `src/`-co-located test layout for this FR (`tests/*.test.ts` instead of `src/*.test.ts`) is documented in `CLAUDE.md` § Testing Conventions when this FR ships — see the layout-policy override branch.
+
+
+## Implementation notes
+
+No advisory notes.

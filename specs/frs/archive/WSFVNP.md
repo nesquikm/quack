@@ -1,8 +1,8 @@
 ---
 title: Admin MCP tools surface (user, project, member, token management)
 milestone: M2
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-12T17:07:13Z
 id: fr_01KREG3A74YT1X94NFY5WSFVNP
 created_at: 2026-05-12T19:30:00Z
 ---
@@ -80,3 +80,8 @@ The memory-plane MCP tool (`search_memory`) and the graph DB are out of scope he
 - The split between `list_projects` (member-readable, filtered) and `list_users` (admin-only) is deliberate: members need to see their own project list (to map `(user, project)` tokens to graphs), but they don't need to enumerate other users.
 - `revoke_token` returns `not_found` for both unknown IDs and already-revoked tokens — same anti-oracle principle as FR-A's 401 body uniformity.
 - Tool responses containing plaintext tokens (`register_user`, `add_member`) carry a one-time-only contract. Document this in each tool's MCP description string so clients (Claude Code) don't cache it long-term.
+
+
+## Implementation notes
+
+No advisory notes.

@@ -1,8 +1,8 @@
 ---
 title: Auth middleware, auth.sqlite, and token primitives
 milestone: M2
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-12T17:07:13Z
 id: fr_01KREG3A72V3EM5DDRP8HA2WTQ
 created_at: 2026-05-12T19:30:00Z
 ---
@@ -69,3 +69,8 @@ The cheap-model extractor, full ingest pipeline, MCP tool dispatch, and graph DB
 - Constant-time comparison matters even though lookup is by hash: prevents timing oracles on token-hash equality if an attacker can submit many tokens with controlled prefixes. Cheap insurance.
 - 401 body uniformity (AC-HA2WTQ.4) is a hard test target — non-uniform bodies historically leak account existence; bake it in from day one.
 - The 7474 default port is a placeholder; ops can override via `PORT` env var.
+
+
+## Implementation notes
+
+No advisory notes.
