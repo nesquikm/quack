@@ -70,9 +70,3 @@ describe("HTTP server fetch handler", () => {
   });
 });
 
-describe("bind hostname constant", () => {
-  test("server module exports loopback-only hostname behavior", async () => {
-    const { startServer } = await import("./index");
-    expect(typeof startServer).toBe("function");
-  });
-});

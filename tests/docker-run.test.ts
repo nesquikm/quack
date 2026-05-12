@@ -67,7 +67,10 @@ describe("docker run / compose smoke", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
-      await down.exited;
+      const downCode = await down.exited;
+      // Surface compose-down failures: a leaked container or volume between runs
+      // is a real bug and we don't want it masked by an unasserted teardown.
+      expect(downCode).toBe(0);
     }
   }, 120_000);
 });

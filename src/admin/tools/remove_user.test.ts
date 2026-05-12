@@ -6,6 +6,10 @@ import { registerUser } from "./register_user";
 import { removeUser } from "./remove_user";
 import { AdminToolError } from "../errors";
 
+// Note: the dispatch gate (src/mcp/gate.ts) enforces ctx.role === 'admin' before
+// the handler runs. These tests pass an admin ctx directly to exercise the
+// handler's internal refusal paths.
+
 function adminCtxFromDb(db: Database) {
   const row = db.query<{ id: number; project_id: number }, []>(
     "SELECT u.id as id, m.project_id as project_id FROM users u JOIN project_members m ON m.user_id = u.id WHERE u.role = 'admin' LIMIT 1",
@@ -37,11 +41,16 @@ describe("removeUser", () => {
     expect(tokenCount?.c).toBe(0);
   });
 
-  test("refuses to remove the last admin", () => {
+  test("refuses to remove the last admin (different caller than target)", () => {
     const db = seededDb();
-    const ctx = adminCtxFromDb(db);
-    // bootstrap admin is the only admin → remove-self attempt first triggers cannot_remove_self
-    expect(() => removeUser({ username: "admin" }, ctx, db)).toThrow(AdminToolError);
+    // Caller is admin role but a different user_id than the bootstrap admin.
+    // The handler's self-check is `user.id === ctx.user_id`, so a different
+    // caller_id bypasses cannot_remove_self and exposes the cannot_remove_last_admin
+    // refusal — the bootstrap admin is the sole admin row.
+    const otherAdminCtx = { user_id: 9999, project_id: 1, role: "admin" as const };
+    let err: unknown;
+    try { removeUser({ username: "admin" }, otherAdminCtx, db); } catch (e) { err = e; }
+    expect((err as AdminToolError).code).toBe("cannot_remove_last_admin");
   });
 
   test("refuses to remove self", () => {

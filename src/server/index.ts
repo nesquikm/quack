@@ -13,14 +13,16 @@ import packageJson from "../../package.json" with { type: "json" };
 export const SERVER_VERSION = (packageJson as { version: string }).version;
 const LOOPBACK_HOST = "127.0.0.1";
 
+export type McpHandlerFn = (
+  request: Request,
+  ctx: { user_id: number; project_id: number; role: "admin" | "member" },
+  db: Database,
+) => Promise<Response> | Response;
+
 export interface BuildAppOptions {
   db: Database;
   logger?: Logger;
-  mcpHandler?: (
-    request: Request,
-    ctx: { user_id: number; project_id: number; role: "admin" | "member" },
-    db: Database,
-  ) => Promise<Response> | Response;
+  mcpHandler?: McpHandlerFn;
 }
 
 export function buildFetch(opts: BuildAppOptions): (request: Request) => Promise<Response> {
@@ -67,7 +69,11 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
   runMigrations(db);
   bootstrapAdmin(db, env);
 
-  const { logger } = createBufferLogger([env.QUACK_MODEL_API_KEY]);
+  // Defense-in-depth: redact both the cheap-model API key AND the bootstrap token
+  // from every log line. The bootstrap token has no current log path, but a future
+  // log call that interpolates env vars (e.g., a startup banner) would otherwise
+  // print plaintext.
+  const { logger } = createBufferLogger([env.QUACK_MODEL_API_KEY, env.QUACK_BOOTSTRAP_TOKEN]);
   const fetch = buildFetch({ db, logger, mcpHandler: options.mcpHandler });
 
   const server = Bun.serve({

@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { hashToken } from "./tokens";
+import { CONTROL_PROJECT_SLUG } from "../admin/index";
 
 export class BootstrapError extends Error {
   constructor(message: string) {
@@ -12,8 +13,11 @@ export interface BootstrapEnv {
   QUACK_BOOTSTRAP_TOKEN?: string;
 }
 
-export const CONTROL_PROJECT_SLUG = "_control_";
 export const CONTROL_PROJECT_DISPLAY_NAME = "Control Plane";
+
+// Re-export so existing callers / tests can `import { CONTROL_PROJECT_SLUG } from "./bootstrap"` without breaking.
+// The canonical definition lives in `src/admin/index.ts`.
+export { CONTROL_PROJECT_SLUG };
 
 export function bootstrapAdmin(db: Database, env: BootstrapEnv): void {
   const row = db.query<{ c: number }, []>("SELECT COUNT(*) as c FROM users").get();
