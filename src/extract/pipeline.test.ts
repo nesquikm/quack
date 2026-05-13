@@ -1,11 +1,18 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { Database } from "bun:sqlite";
 import neo4j, { type Driver } from "neo4j-driver";
 import { dockerAvailable, spawnNeo4j, type SpawnedNeo4j } from "../graph/_neo4j_helper";
 import { Neo4jGraphAdapter } from "../graph/adapter";
 import { runMigrations } from "../graph/migrations";
+import { runMigrations as runSqliteMigrations } from "../auth/sqlite/schema";
 import { registerExtractTemplates } from "../graph/templates/extract/index";
 import { writeExtraction } from "./writer";
 import { createRedactor } from "./redact";
+import { BoundedQueue } from "./queue";
+import { startConsumer, type QueuedEnvelope } from "./consumer";
+import { addMemory } from "../mcp/tools/memory/add_memory";
+import type { ExtractionClient } from "./client";
+import type { DeadLetterWriter } from "./dead_letter";
 import type { AuthContext } from "../auth/middleware";
 import type { ExtractionResult } from "./client";
 
@@ -162,6 +169,117 @@ describe("extraction pipeline e2e (integration)", () => {
       expect(typeof wc === "number" ? wc : wc.toNumber()).toBe(0);
     } finally {
       await session.close();
+    }
+  });
+
+  // AC-41NXTZ.11 — full e2e for add_memory: addMemory → queue → consumer →
+  // mocked model emits known ExtractionResult → writer lands nodes scoped to
+  // ctx.project_id. Mirrors the existing pipeline pattern; the MCP HTTP path
+  // is exercised in add_memory.test.ts.
+  test("AC-41NXTZ.11: add_memory e2e — Bun + Node entities and Feedback land scoped to caller's project", async () => {
+    if (!dockerOk || !driver) return;
+    const adapter = new Neo4jGraphAdapter(driver);
+    const ctxAddMem: AuthContext = { user_id: 9, project_id: 81234, role: "member" };
+
+    // SQLite stub so addMemory's slug lookup succeeds.
+    const db = new Database(":memory:");
+    runSqliteMigrations(db);
+    db.run(
+      "INSERT INTO projects(id, slug, display_name) VALUES (81234, 'proj-e2e', 'Proj E2E')",
+    );
+
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+
+    // Mock the cheap-model client: any envelope (must be kind=explicit_add)
+    // emits the canonical ExtractionResult the AC describes.
+    const mockedResult: ExtractionResult = {
+      entities: [
+        { name: "Bun", kind: "runtime" },
+        { name: "Node", kind: "runtime" },
+      ],
+      decisions: [],
+      files: [],
+      symbols: [],
+      feedbacks: [{ body: "I prefer Bun over Node for this project", sentiment: "positive" }],
+      relations: [
+        { type: "RELATED_TO", from: { kind: "Entity", name: "Bun" }, to: { kind: "Entity", name: "Node" } },
+      ],
+    };
+    const observed: { kind: string | null } = { kind: null };
+    const client: ExtractionClient = {
+      async extract(payload: unknown) {
+        observed.kind = (payload as { kind?: string } | undefined)?.kind ?? null;
+        return mockedResult;
+      },
+    };
+    const deadLetter: DeadLetterWriter = { append() {} };
+
+    const consumer = startConsumer({
+      queue,
+      adapter,
+      redactor: createRedactor(),
+      client,
+      deadLetter,
+      concurrency: 1,
+      pollMs: 10,
+    });
+
+    try {
+      // Caller (MCP) invokes add_memory.
+      const out = await addMemory(
+        { content: "I prefer Bun over Node for this project" },
+        ctxAddMem,
+        { queue, db },
+      );
+      expect(out.accepted).toBe(true);
+
+      // Drive the consumer to drain.
+      await consumer.drainOnce();
+
+      // The model received an envelope whose kind is "explicit_add".
+      expect(observed.kind).toBe("explicit_add");
+
+      // The graph now contains the seeded nodes scoped to ctx.project_id.
+      const session = driver.session({ database: "neo4j" });
+      try {
+        const bun = await session.run(
+          `MATCH (e:Entity {project_id: $pid, name: 'bun'}) RETURN count(*) AS c`,
+          { pid: neo4j.int(ctxAddMem.project_id) },
+        );
+        const node = await session.run(
+          `MATCH (e:Entity {project_id: $pid, name: 'node'}) RETURN count(*) AS c`,
+          { pid: neo4j.int(ctxAddMem.project_id) },
+        );
+        const fb = await session.run(
+          `MATCH (f:Feedback {project_id: $pid}) WHERE f.body CONTAINS 'Bun' RETURN count(*) AS c`,
+          { pid: neo4j.int(ctxAddMem.project_id) },
+        );
+        const rel = await session.run(
+          `MATCH (a:Entity {project_id: $pid, name: 'bun'})-[r:RELATED_TO]->(b:Entity {project_id: $pid, name: 'node'}) RETURN count(*) AS c`,
+          { pid: neo4j.int(ctxAddMem.project_id) },
+        );
+        const getC = (rec: { records: Array<{ get(k: string): unknown }> }) => {
+          const v = rec.records[0]?.get("c");
+          return typeof v === "number" ? v : (v as { toNumber(): number }).toNumber();
+        };
+        expect(getC(bun)).toBeGreaterThanOrEqual(1);
+        expect(getC(node)).toBeGreaterThanOrEqual(1);
+        expect(getC(fb)).toBeGreaterThanOrEqual(1);
+        expect(getC(rel)).toBeGreaterThanOrEqual(1);
+
+        // Cross-tenant defense: another project's MATCH returns 0.
+        const otherPid = 99999;
+        const otherBun = await session.run(
+          `MATCH (e:Entity {project_id: $pid, name: 'bun'}) RETURN count(*) AS c`,
+          { pid: neo4j.int(otherPid) },
+        );
+        expect(getC(otherBun)).toBe(0);
+      } finally {
+        await session.close();
+      }
+    } finally {
+      await consumer.stop("test");
+      db.close();
     }
   });
 });

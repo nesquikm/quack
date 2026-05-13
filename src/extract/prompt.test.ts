@@ -32,4 +32,33 @@ describe("extraction prompt", () => {
       "relations",
     ]);
   });
+
+  // AC-41NXTZ.7 — explicit_add branch frames content as a user-asserted fact.
+  test("AC-41NXTZ.7: buildUserPrompt for kind: 'explicit_add' contains 'user-asserted fact' marker", () => {
+    const p = buildUserPrompt({
+      kind: "explicit_add",
+      payload: { content: "I prefer Bun over Node for this project" },
+    });
+    expect(p).toContain("user-asserted fact");
+    // Content must still appear in the prompt body so the model can extract from it.
+    expect(p).toContain("I prefer Bun over Node for this project");
+  });
+
+  test("AC-41NXTZ.7: hook-kind prompts are byte-unchanged (no 'user-asserted fact' bleed)", () => {
+    // session_start / stop / post_tool_use prompts MUST NOT contain the marker
+    // phrase. This is the byte-localization guarantee — the explicit_add branch
+    // must not mutate the hook-kind branches.
+    for (const kind of ["session_start", "stop", "post_tool_use"]) {
+      const p = buildUserPrompt({ kind, payload: { x: 1 } });
+      expect(p).not.toContain("user-asserted fact");
+    }
+  });
+
+  test("AC-41NXTZ.7: hook-kind 'stop' prompt is exactly the legacy 'Extract from this hook payload' frame", () => {
+    // Locks in the byte-unchanged guarantee for hook-kind branches: the literal
+    // legacy frame "Extract from this hook payload:" must still introduce the
+    // body for non-explicit_add kinds.
+    const p = buildUserPrompt({ kind: "stop", payload: { x: 1 } });
+    expect(p).toContain("Extract from this hook payload");
+  });
 });

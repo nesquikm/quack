@@ -8,12 +8,15 @@ import { incrementError } from "../metrics/counters";
 import { writeExtraction } from "./writer";
 
 // Hook envelope shape — kept duck-typed here so we don't take a circular dep on
-// the ingest handler.
+// the ingest handler. `project_slug` is optional and mirrors HookEnvelope's
+// top-level field (FR-4NY6S1 / FR-41NXTZ AC.3): hook clients may omit it;
+// add_memory always sets it.
 export interface QueuedEnvelope {
   kind: string;
   payload: unknown;
   ctx: AuthContext;
   queued_at: string;
+  project_slug?: string;
 }
 
 export interface ConsumerOptions {

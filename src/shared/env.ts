@@ -44,6 +44,9 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(50 * 1024 * 1024),
+
+  // add_memory MCP tool (FR-41NXTZ). Caps `content` byte length.
+  QUACK_ADD_MEMORY_MAX_BYTES: z.coerce.number().int().positive().default(32768),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -65,4 +68,15 @@ export function parseEnv(source: Record<string, string | undefined> = Bun.env): 
     throw new EnvError(result.error.issues);
   }
   return result.data;
+}
+
+// Narrow reader for QUACK_ADD_MEMORY_MAX_BYTES — used by add_memory.ts at
+// module load. Reads only this one var so the import-time schema-build doesn't
+// require a fully-populated env (e.g., unit tests that don't set
+// QUACK_NEO4J_PASSWORD). Same default + coercion semantics as the full schema.
+const addMemoryMaxBytesSchema = z.coerce.number().int().positive().default(32768);
+export function getAddMemoryMaxBytes(
+  source: Record<string, string | undefined> = Bun.env,
+): number {
+  return addMemoryMaxBytesSchema.parse(source.QUACK_ADD_MEMORY_MAX_BYTES);
 }

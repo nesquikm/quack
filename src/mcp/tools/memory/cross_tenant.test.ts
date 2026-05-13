@@ -1,13 +1,21 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { Database } from "bun:sqlite";
 import neo4j, { type Driver } from "neo4j-driver";
 import { dockerAvailable, spawnNeo4j, type SpawnedNeo4j } from "../../../graph/_neo4j_helper";
 import { Neo4jGraphAdapter } from "../../../graph/adapter";
 import { registerMemoryTemplates } from "../../../graph/templates/memory/index";
+import { registerExtractTemplates } from "../../../graph/templates/extract/index";
 import { runMigrations } from "../../../graph/migrations";
+import { runMigrations as runSqliteMigrations } from "../../../auth/sqlite/schema";
 import { searchMemory } from "./search_memory";
 import { getNeighbors } from "./get_neighbors";
 import { pathBetween } from "./path_between";
 import { recentDecisions } from "./recent_decisions";
+import { addMemory } from "./add_memory";
+import { BoundedQueue } from "../../../extract/queue";
+import { writeExtraction } from "../../../extract/writer";
+import type { ExtractionResult } from "../../../extract/client";
+import type { QueuedEnvelope } from "../../../extract/consumer";
 import type { AuthContext } from "../../../auth/middleware";
 
 const ctxA: AuthContext = { user_id: 1, project_id: 1001, role: "admin" };
@@ -33,6 +41,7 @@ beforeAll(async () => {
   });
   await runMigrations(driver);
   registerMemoryTemplates();
+  registerExtractTemplates();
   adapter = new Neo4jGraphAdapter(driver);
 
   // Seed two projects with overlapping entity names + distinct decisions.
@@ -128,5 +137,63 @@ describe("memory tools — cross-tenant isolation (integration)", () => {
     const a = await recentDecisions({ time_window: "7d", limit: 20, mode: "templates" }, ctxA, adapter);
     expect(a.results.some((r) => r.id === "da")).toBe(true);
     expect(a.results.some((r) => r.id === "db")).toBe(false);
+  });
+
+  // AC-41NXTZ.8 — add_memory writes carry ctx.project_id; cross-tenant readers can't see them.
+  test("AC-41NXTZ.8: add_memory enqueues envelope under ctx.project_id; mocked extraction lands in A only", async () => {
+    if (!dockerOk || !adapter) return;
+    // Seed a minimal auth.sqlite with rows for ctxA's project_id (1001) and
+    // ctxB's project_id (2002) so add_memory's slug lookup succeeds.
+    const db = new Database(":memory:");
+    runSqliteMigrations(db);
+    db.run("INSERT INTO projects(id, slug, display_name) VALUES (1001, 'proj-a', 'A')");
+    db.run("INSERT INTO projects(id, slug, display_name) VALUES (2002, 'proj-b', 'B')");
+
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+
+    // ctxA calls add_memory; envelope hits the queue with kind=explicit_add + ctx.project_id=1001.
+    const out = await addMemory(
+      { content: "shared-name lives only in project A" },
+      ctxA,
+      { queue, db },
+    );
+    expect(out.accepted).toBe(true);
+
+    const env = queue.dequeue()!;
+    expect(env.kind).toBe("explicit_add");
+    expect(env.ctx.project_id).toBe(ctxA.project_id);
+
+    // Simulate the consumer's extraction step: write a known ExtractionResult
+    // through writeExtraction with the envelope's ctx (NOT a model-supplied
+    // override). This is the exact path the consumer takes.
+    const result: ExtractionResult = {
+      entities: [{ name: "shared-name", kind: "library" }],
+      decisions: [],
+      files: [],
+      symbols: [],
+      feedbacks: [{ body: "shared-name lives only in project A" }],
+      relations: [
+        { type: "RELATED_TO", from: { kind: "Feedback", name: "shared-name lives only in project A" }, to: { kind: "Entity", name: "shared-name" } },
+      ],
+    };
+    await writeExtraction(adapter, env.ctx, result, new Date().toISOString());
+
+    // Project A's token sees the new entity.
+    const seenByA = await searchMemory(
+      { entities: ["shared-name"], types: ["Entity"], mode: "templates", limit: 20 },
+      ctxA,
+      adapter,
+    );
+    expect(seenByA.results.some((r) => r.kind === "Entity")).toBe(true);
+
+    // Project B's token must NOT see it (cross-tenant isolation).
+    const seenByB = await searchMemory(
+      { entities: ["shared-name"], types: ["Entity"], mode: "templates", limit: 20 },
+      ctxB,
+      adapter,
+    );
+    expect(seenByB.results.some((r) => r.kind === "Entity")).toBe(false);
+
+    db.close();
   });
 });

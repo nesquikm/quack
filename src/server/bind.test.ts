@@ -24,6 +24,7 @@ function withTestServer(): { server: ReturnType<typeof startServer>["server"]; d
       QUACK_REDACTION_PATTERNS: undefined,
       QUACK_MODEL_NAME: "gpt-4o-mini",
       QUACK_DEAD_LETTER_MAX_BYTES: 1024 * 1024,
+      QUACK_ADD_MEMORY_MAX_BYTES: 32768,
     },
     skipGraph: true,
   });

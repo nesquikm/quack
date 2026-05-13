@@ -118,4 +118,17 @@ describe("serverStatus", () => {
     const snap = serverStatus({}, adminCtx, db);
     expect(snap.cleanup.pending_rows).toBe(2);
   });
+
+  // AC-41NXTZ.10 — FR Testing section requires server_status.test.ts to verify
+  // the `explicit_add_received` info-level category surfaces in the snapshot
+  // once incremented. The counter itself is wired from add_memory.ts; this
+  // test asserts the snapshot contract.
+  test("AC-41NXTZ.10: explicit_add_received category surfaces in errors.by_category", () => {
+    const db = seededDb();
+    incrementError("explicit_add_received");
+    incrementError("explicit_add_received");
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.errors.by_category["explicit_add_received"]).toBe(2);
+  });
+
 });

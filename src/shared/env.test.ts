@@ -67,4 +67,20 @@ describe("parseEnv", () => {
     const env = parseEnv({ QUACK_MODEL_BASE_URL: "", QUACK_NEO4J_PASSWORD: "pw" });
     expect(env.QUACK_MODEL_BASE_URL).toBeUndefined();
   });
+
+  // AC-41NXTZ.2 — QUACK_ADD_MEMORY_MAX_BYTES env var.
+  test("AC-41NXTZ.2: QUACK_ADD_MEMORY_MAX_BYTES defaults to 32768", () => {
+    const env = parseEnv({ QUACK_NEO4J_PASSWORD: "pw" });
+    expect((env as unknown as { QUACK_ADD_MEMORY_MAX_BYTES: number }).QUACK_ADD_MEMORY_MAX_BYTES).toBe(32768);
+  });
+
+  test("AC-41NXTZ.2: QUACK_ADD_MEMORY_MAX_BYTES accepts a positive override", () => {
+    const env = parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ADD_MEMORY_MAX_BYTES: "65536" });
+    expect((env as unknown as { QUACK_ADD_MEMORY_MAX_BYTES: number }).QUACK_ADD_MEMORY_MAX_BYTES).toBe(65536);
+  });
+
+  test("AC-41NXTZ.2: QUACK_ADD_MEMORY_MAX_BYTES rejects non-positive values", () => {
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ADD_MEMORY_MAX_BYTES: "0" })).toThrow(EnvError);
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ADD_MEMORY_MAX_BYTES: "-100" })).toThrow(EnvError);
+  });
 });

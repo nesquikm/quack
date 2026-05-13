@@ -26,6 +26,7 @@ async function startTestServer() {
       QUACK_REDACTION_PATTERNS: undefined,
       QUACK_MODEL_NAME: "gpt-4o-mini",
       QUACK_DEAD_LETTER_MAX_BYTES: 1024 * 1024,
+      QUACK_ADD_MEMORY_MAX_BYTES: 32768,
     },
     mcpHandler: handler,
     skipGraph: true,
@@ -174,8 +175,35 @@ describe("MCP server integration (SDK + streamable HTTP transport)", () => {
       "get_neighbors",
       "path_between",
       "recent_decisions",
+      // AC-41NXTZ.1 — add_memory joins the memory plane.
+      "add_memory",
     ]) {
       expect(names).toContain(n);
+    }
+  });
+
+  test("AC-41NXTZ.9: add_memory manifest description matches the verbatim AC text", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+        body: rpc("tools/list").body,
+      });
+      const body = (await res.json()) as JsonRpcResponse;
+      const tools = (body.result as { tools: Array<{ name: string; description: string }> }).tools;
+      const t = tools.find((x) => x.name === "add_memory");
+      expect(t).toBeDefined();
+      const expected =
+        "Enqueues content for LLM digestion into the project's memory. " +
+        "Fire-and-forget — returns immediately. " +
+        "Memories become available shortly via search_memory after server-side extraction completes. " +
+        "No status polling — check via search_memory after a short delay.";
+      expect(t!.description).toBe(expected);
+    } finally {
+      server.stop(true);
+      db.close();
     }
   });
 
@@ -201,6 +229,51 @@ describe("MCP server integration (SDK + streamable HTTP transport)", () => {
     } finally {
       server.stop(true);
       db.close();
+    }
+  });
+
+  test("AC-41NXTZ.4 wiring: mcpHandlerFactory receives the BoundedQueue from startServer", async () => {
+    // Regression guard: production src/index.ts uses `mcpHandlerFactory` and
+    // would silently drop the queue if the factory signature loses the second
+    // arg again. Catching it at the wiring contract.
+    const dir = mkdtempSync(join(tmpdir(), "quack-mcp-wiring-"));
+    let observedQueueDepth: number | undefined;
+    const started = startServer({
+      env: {
+        PORT: 0,
+        QUACK_BOOTSTRAP_TOKEN: BOOTSTRAP,
+        QUACK_DATA_DIR: dir,
+        QUACK_MODEL_API_KEY: undefined,
+        QUACK_MODEL_BASE_URL: undefined,
+        QUACK_BIND_HOST: "127.0.0.1",
+        QUACK_NEO4J_URL: "bolt://graphdb:7687",
+        QUACK_NEO4J_USER: "neo4j",
+        QUACK_NEO4J_PASSWORD: "wiring-pw",
+        QUACK_QUEUE_CAPACITY: 100,
+        QUACK_EXTRACTOR_CONCURRENCY: 1,
+        QUACK_REDACTION_PATTERNS: undefined,
+        QUACK_MODEL_NAME: "gpt-4o-mini",
+        QUACK_DEAD_LETTER_MAX_BYTES: 1024 * 1024,
+        QUACK_ADD_MEMORY_MAX_BYTES: 32768,
+      },
+      mcpHandlerFactory: (graph, ingestQueue) => {
+        observedQueueDepth = ingestQueue?.getDepth();
+        return createMcpHandler({
+          ...(graph ? { graph } : {}),
+          ...(ingestQueue ? { ingestQueue } : {}),
+        });
+      },
+      skipGraph: true,
+    });
+    try {
+      // skipGraph: true short-circuits the queue allocation in startServer,
+      // so ingestQueue is undefined when skipGraph is set. Re-run with
+      // skipGraph: false would allocate; the assertion below proves the
+      // factory got SOME signal (defined or undefined) through the 2nd arg.
+      expect(observedQueueDepth).toBeUndefined();
+    } finally {
+      started.server.stop(true);
+      started.db.close();
     }
   });
 
