@@ -24,6 +24,10 @@ const envSchema = z.object({
   // Only `127.0.0.1` and `0.0.0.0` are accepted to make misconfiguration
   // a startup error rather than an LAN exposure.
   QUACK_BIND_HOST: z.enum(["127.0.0.1", "0.0.0.0"]).default("127.0.0.1"),
+  // Neo4j connection (FR-SFQDXR). Password is required — Zod refuses on absence.
+  QUACK_NEO4J_URL: z.string().min(1).default("bolt://graphdb:7687"),
+  QUACK_NEO4J_USER: z.string().min(1).default("neo4j"),
+  QUACK_NEO4J_PASSWORD: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

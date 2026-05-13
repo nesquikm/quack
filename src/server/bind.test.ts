@@ -16,7 +16,11 @@ function withTestServer(): { server: ReturnType<typeof startServer>["server"]; d
       QUACK_MODEL_API_KEY: undefined,
       QUACK_MODEL_BASE_URL: undefined,
       QUACK_BIND_HOST: "127.0.0.1",
+      QUACK_NEO4J_URL: "bolt://graphdb:7687",
+      QUACK_NEO4J_USER: "neo4j",
+      QUACK_NEO4J_PASSWORD: "bind-test-pw",
     },
+    skipGraph: true,
   });
   return { server, db };
 }

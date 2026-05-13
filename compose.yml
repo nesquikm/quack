@@ -2,7 +2,6 @@
 # Compose v2 (`docker compose`) is required; v1 (`docker-compose`) is NOT supported.
 #
 # Bring up:        docker compose up -d
-# Bring up + graph: docker compose --profile daemon-graph up -d
 # Tear down + vols: docker compose down --volumes
 
 services:
@@ -18,21 +17,41 @@ services:
       - .env
     volumes:
       - quack-data:/data
+    depends_on:
+      graphdb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:7474/health"]
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 30s
     restart: unless-stopped
 
-  # Optional graph-DB daemon — pinned once a concrete engine is chosen.
+  # Graph DB — required from M3 onward. The `daemon-graph` profile gate
+  # from FR-BKPM28 is removed; this is no longer optional. Healthcheck
+  # uses cypher-shell which ships with the Neo4j image; the literal `$$`
+  # is Compose's escape so password expansion happens inside the
+  # container at runtime, not at compose-file parse time.
   graphdb:
-    # TODO: pin once graph DB chosen (Kùzu / Neo4j / Memgraph / SQLite-with-edges).
-    image: alpine:3.20
-    command: ["sh", "-c", "echo 'graph DB placeholder — not yet implemented'; sleep infinity"]
-    profiles: [daemon-graph]
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/${QUACK_NEO4J_PASSWORD:?password required}
+      # QUACK_NEO4J_PASSWORD is exposed inside the container too so the
+      # healthcheck shell can read it at runtime (the `$$` escape below).
+      QUACK_NEO4J_PASSWORD: ${QUACK_NEO4J_PASSWORD}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 1g
+    volumes:
+      - quack-graph-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p $$QUACK_NEO4J_PASSWORD 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     restart: unless-stopped
 
 volumes:
   quack-data:
+  quack-graph-data:

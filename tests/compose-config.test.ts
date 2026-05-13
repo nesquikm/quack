@@ -20,10 +20,33 @@ describe("compose.yml shape", () => {
     expect(yaml).toMatch(/^\s{2}quack:/m);
   });
 
-  test("graphdb service is gated by daemon-graph profile", () => {
+  test("graphdb service is required (no profile gate); uses neo4j:5-community", () => {
     const yaml = readCompose();
     expect(yaml).toMatch(/^\s{2}graphdb:/m);
-    expect(yaml).toContain("profiles: [daemon-graph]");
+    expect(yaml).toContain("neo4j:5-community");
+    expect(yaml).not.toContain("profiles: [daemon-graph]");
+  });
+
+  test("quack service depends_on graphdb with service_healthy condition", () => {
+    const yaml = readCompose();
+    expect(yaml).toMatch(/depends_on:\s*\n\s+graphdb:\s*\n\s+condition: service_healthy/);
+  });
+
+  test("graphdb healthcheck uses cypher-shell with $$ password escape", () => {
+    const yaml = readCompose();
+    expect(yaml).toContain("cypher-shell");
+    expect(yaml).toContain("$$QUACK_NEO4J_PASSWORD");
+  });
+
+  test("quack-graph-data named volume is declared", () => {
+    const yaml = readCompose();
+    expect(yaml).toMatch(/^\s{2}quack-graph-data:/m);
+    expect(yaml).toContain("quack-graph-data:/data");
+  });
+
+  test("compose requires QUACK_NEO4J_PASSWORD via :? syntax", () => {
+    const yaml = readCompose();
+    expect(yaml).toContain("${QUACK_NEO4J_PASSWORD:?");
   });
 
   test("declares quack-data named volume mounted at /data", () => {
@@ -47,7 +70,16 @@ describe("compose.yml shape", () => {
 describe(".env.example contract", () => {
   test("mentions every env var from src/shared/env.ts", () => {
     const env = readFileSync(join(REPO_ROOT, ".env.example"), "utf8");
-    for (const v of ["PORT", "QUACK_BOOTSTRAP_TOKEN", "QUACK_DATA_DIR", "QUACK_MODEL_API_KEY", "QUACK_MODEL_BASE_URL"]) {
+    for (const v of [
+      "PORT",
+      "QUACK_BOOTSTRAP_TOKEN",
+      "QUACK_DATA_DIR",
+      "QUACK_MODEL_API_KEY",
+      "QUACK_MODEL_BASE_URL",
+      "QUACK_NEO4J_URL",
+      "QUACK_NEO4J_USER",
+      "QUACK_NEO4J_PASSWORD",
+    ]) {
       expect(env).toContain(v);
     }
   });
@@ -90,7 +122,7 @@ describe("README deployment section", () => {
     expect(readme).toContain("<!-- END: quack-deployment-section -->");
     expect(readme).toContain("docker compose up");
     expect(readme).toContain("openssl rand -base64 32");
-    expect(readme).toContain("daemon-graph");
+    expect(readme).toContain("Neo4j");
   });
 
   test("BEGIN/END deployment markers appear at most once each", () => {

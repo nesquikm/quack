@@ -11,10 +11,11 @@ plugin) is required — Compose v1 (`docker-compose` binary) is not supported.
 ### Quickstart
 
 ```bash
-# 1. Generate a bootstrap token and put it in .env (gitignored).
+# 1. Generate secrets and put them in .env (gitignored).
 echo "QUACK_BOOTSTRAP_TOKEN=$(openssl rand -base64 32)" >> .env
+echo "QUACK_NEO4J_PASSWORD=$(openssl rand -base64 32)" >> .env
 
-# 2. Bring the stack up.
+# 2. Bring the stack up (quack + graphdb Neo4j Community).
 docker compose up -d
 
 # 3. Sanity-check the loopback-only health endpoint.
@@ -26,25 +27,25 @@ table is empty); it mints the initial admin user/project/membership/token and is
 ignored on every subsequent start. Rotation = revoke the token via the
 `revoke_token` MCP tool and re-issue from another admin.
 
-### Enabling the graph-DB daemon profile
+`QUACK_NEO4J_PASSWORD` is read on every boot — Neo4j refuses to start without it.
+Rotate by `docker compose down && docker volume rm quack_quack-graph-data` to
+reset the graph, or by issuing `ALTER USER neo4j SET PASSWORD <new>` via
+`cypher-shell` against the running container, then updating `.env`.
 
-A second (optional) `graphdb` service sits behind the `daemon-graph` Compose
-profile. The graph-DB engine is **TBD** (the profile is a placeholder until the
-choice resolves in a follow-up `/brainstorm`):
+### Graph DB (Neo4j Community)
 
-```bash
-docker compose --profile daemon-graph up -d
-```
-
-Once a concrete engine is pinned, the profile name stays the same — existing
-`docker compose --profile daemon-graph up` commands keep working.
+The `graphdb` service runs `neo4j:5-community` and is required from M3 onward
+(the `daemon-graph` profile gate from M2 has been removed). Quack waits for
+`graphdb` to become healthy before accepting traffic; `/health` reports
+`graphdb: "ok" | "down"` based on a 1-second Bolt probe each request.
 
 ### Backup
 
-`auth.sqlite` and, for embedded graph engines, the graph data files live on the
-named `quack-data` volume.
+`auth.sqlite` lives on the `quack-data` volume; graph data lives on
+`quack-graph-data`.
 
 ```bash
-docker run --rm -v quack-data:/data alpine tar cz /data > quack-backup.tgz
+docker run --rm -v quack-data:/data alpine tar cz /data > quack-auth-backup.tgz
+docker run --rm -v quack-graph-data:/data alpine tar cz /data > quack-graph-backup.tgz
 ```
 <!-- END: quack-deployment-section -->

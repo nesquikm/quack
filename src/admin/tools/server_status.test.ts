@@ -5,6 +5,7 @@ import { bootstrapAdmin } from "../../auth/bootstrap";
 import { serverStatus } from "./server_status";
 import { incrementError, resetCountersForTests } from "../../metrics/counters";
 import { registerUser } from "./register_user";
+import { resetGraphdbStatusForTests, setGraphdbStatus } from "./_graphdb_status";
 
 const adminCtx = { user_id: 1, project_id: 1, role: "admin" as const };
 
@@ -16,7 +17,10 @@ function seededDb(): Database {
 }
 
 describe("serverStatus", () => {
-  beforeEach(() => resetCountersForTests());
+  beforeEach(() => {
+    resetCountersForTests();
+    resetGraphdbStatusForTests();
+  });
 
   test("returns version literal v1", () => {
     const db = seededDb();
@@ -75,5 +79,25 @@ describe("serverStatus", () => {
     incrementError("future_category");
     const snap = serverStatus({}, adminCtx, db);
     expect(snap.errors.by_category["future_category"]).toBe(1);
+  });
+
+  test("counts.graphdb defaults to { status: 'down', indexes: 0 } before driver wires up", () => {
+    const db = seededDb();
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.counts.graphdb).toEqual({ status: "down", indexes: 0 });
+  });
+
+  test("counts.graphdb reflects setGraphdbStatus value (server reports ok + index count)", () => {
+    const db = seededDb();
+    setGraphdbStatus({ status: "ok", indexes: 11 });
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.counts.graphdb).toEqual({ status: "ok", indexes: 11 });
+  });
+
+  test("db_error category increments when GraphAdapter throws (counter visible via server_status)", () => {
+    const db = seededDb();
+    incrementError("db_error");
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.errors.by_category["db_error"]).toBe(1);
   });
 });

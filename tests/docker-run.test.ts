@@ -44,14 +44,17 @@ describe("docker run / compose smoke", () => {
     expect(idOut).toBe("1000");
   }, 600_000);
 
-  test("`docker compose up` reaches healthy state within 30 s", async () => {
+  test("`docker compose up` reaches healthy state within 60 s (M3 two-service stack)", async () => {
     if (!(await dockerAvailable())) {
       console.warn("docker not on PATH — skipping compose smoke test");
       return;
     }
-    // compose.yml requires .env; install a test-owned one with a bootstrap token,
-    // restore on teardown.
-    const envHandle = installComposeEnv(REPO_ROOT, `QUACK_BOOTSTRAP_TOKEN=compose-smoke-token`);
+    // compose.yml requires .env; install a test-owned one with the bootstrap
+    // token AND the required Neo4j password (M3 makes graphdb non-optional).
+    const envHandle = installComposeEnv(
+      REPO_ROOT,
+      `QUACK_BOOTSTRAP_TOKEN=compose-smoke-token\nQUACK_NEO4J_PASSWORD=compose-smoke-neo4j-pw\n`,
+    );
     try {
       const up = Bun.spawn(["docker", "compose", "up", "-d", "--build"], {
         cwd: REPO_ROOT,
@@ -65,7 +68,7 @@ describe("docker run / compose smoke", () => {
       }
 
       try {
-        const ok = await awaitHealth("http://127.0.0.1:7474/health", 30_000);
+        const ok = await awaitHealth("http://127.0.0.1:7474/health", 90_000);
         expect(ok).toBe(true);
       } finally {
         const down = Bun.spawn(["docker", "compose", "down", "--volumes"], {

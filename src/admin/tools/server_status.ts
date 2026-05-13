@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Database } from "bun:sqlite";
 import type { AuthContext } from "../../auth/middleware";
 import { getSnapshot, getStartedAt } from "../../metrics/counters";
+import { getGraphdbStatus } from "./_graphdb_status";
 import packageJson from "../../../package.json" with { type: "json" };
 
 const SERVER_VERSION = (packageJson as { version: string }).version;
@@ -26,6 +27,7 @@ export interface ServerStatusResponse {
     projects: number;
     tokens_active: number;
     server_version: string;
+    graphdb: { status: "ok" | "down"; indexes: number };
   };
 }
 
@@ -51,6 +53,7 @@ export function serverStatus(
       projects: projects?.c ?? 0,
       tokens_active: tokensActive?.c ?? 0,
       server_version: SERVER_VERSION,
+      graphdb: getGraphdbStatus(),
     },
   };
 }

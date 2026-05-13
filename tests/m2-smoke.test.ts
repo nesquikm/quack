@@ -63,7 +63,10 @@ describe("M2 end-to-end smoke (programmatic version of the milestone-plan manual
         return;
       }
 
-      const envHandle = installComposeEnv(REPO_ROOT, `QUACK_BOOTSTRAP_TOKEN=${BOOTSTRAP_TOKEN}\n`);
+      const envHandle = installComposeEnv(
+        REPO_ROOT,
+        `QUACK_BOOTSTRAP_TOKEN=${BOOTSTRAP_TOKEN}\nQUACK_NEO4J_PASSWORD=m2-smoke-neo4j-pw\n`,
+      );
       const compose = ["docker", "compose"];
 
       try {
@@ -79,8 +82,9 @@ describe("M2 end-to-end smoke (programmatic version of the milestone-plan manual
         }
 
         try {
-          // AC-BKPM28.6 piggyback: stack healthy within 30 s.
-          const healthy = await awaitHealth(30_000);
+          // M3 milestone AC: stack (quack + graphdb) healthy within 60 s — loosen
+          // from M2's 30 s to accommodate Neo4j's first-time index/auth setup.
+          const healthy = await awaitHealth(90_000);
           expect(healthy).toBe(true);
 
           // Step 1 — admin registers a member user; response carries the one-time plaintext token.

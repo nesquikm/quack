@@ -23,12 +23,12 @@ function post(path: string, token?: string): Request {
 }
 
 describe("HTTP server fetch handler", () => {
-  test("GET /health returns 200 without auth", async () => {
+  test("GET /health returns 200 without auth; graphdb reports 'down' when no driver wired", async () => {
     const fetch = buildFetch({ db: seededDb() });
     const res = await fetch(get("/health"));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ ok: true, version: SERVER_VERSION });
+    expect(body).toEqual({ ok: false, version: SERVER_VERSION, graphdb: "down" });
   });
 
   test("POST /ingest without token returns 401", async () => {
