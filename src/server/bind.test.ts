@@ -19,6 +19,11 @@ function withTestServer(): { server: ReturnType<typeof startServer>["server"]; d
       QUACK_NEO4J_URL: "bolt://graphdb:7687",
       QUACK_NEO4J_USER: "neo4j",
       QUACK_NEO4J_PASSWORD: "bind-test-pw",
+      QUACK_QUEUE_CAPACITY: 100,
+      QUACK_EXTRACTOR_CONCURRENCY: 1,
+      QUACK_REDACTION_PATTERNS: undefined,
+      QUACK_MODEL_NAME: "gpt-4o-mini",
+      QUACK_DEAD_LETTER_MAX_BYTES: 1024 * 1024,
     },
     skipGraph: true,
   });

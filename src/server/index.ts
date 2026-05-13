@@ -12,6 +12,16 @@ import { getDriver, probeGraphdb } from "../graph/driver";
 import { runMigrations as runGraphMigrations } from "../graph/migrations";
 import { validateTemplateRegistry } from "../graph/templates/index";
 import { Neo4jGraphAdapter, type GraphAdapter } from "../graph/adapter";
+import { registerExtractTemplates } from "../graph/templates/extract/index";
+import { registerMemoryTemplates } from "../graph/templates/memory/index";
+import { BoundedQueue } from "../extract/queue";
+import { createRedactor } from "../extract/redact";
+import { createExtractionClient } from "../extract/client";
+import { createDeadLetterWriter } from "../extract/dead_letter";
+import { startConsumer, type Consumer, type QueuedEnvelope } from "../extract/consumer";
+import { handleIngest } from "../ingest/handler";
+import { setQueueDepthSource, queueIncrement } from "../metrics/counters";
+import { parseExtraPatternsFromEnv } from "../shared/redaction_patterns";
 import packageJson from "../../package.json" with { type: "json" };
 import type { Neo4jDriver } from "../graph/types";
 
@@ -28,10 +38,11 @@ export interface BuildAppOptions {
   logger?: Logger;
   mcpHandler?: McpHandlerFn;
   graphDriver?: Neo4jDriver | null;
+  ingestQueue?: BoundedQueue<QueuedEnvelope>;
 }
 
 export function buildFetch(opts: BuildAppOptions): (request: Request) => Promise<Response> {
-  const { db, mcpHandler, graphDriver } = opts;
+  const { db, mcpHandler, graphDriver, ingestQueue } = opts;
 
   return async function fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -52,6 +63,12 @@ export function buildFetch(opts: BuildAppOptions): (request: Request) => Promise
     if (!ctx) return unauthorizedResponse();
 
     if (url.pathname === "/ingest" && request.method === "POST") {
+      if (ingestQueue) {
+        return handleIngest(request, ctx, { queue: ingestQueue, db });
+      }
+      // M2-compat fallback: no queue wired (extractor disabled). Still a
+      // 204 so existing clients don't break; future ops monitoring should
+      // catch the `queue.depth === null` signal in server_status.
       return new Response(null, { status: 204 });
     }
 
@@ -97,10 +114,13 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
 
   let graphDriver: Neo4jDriver | null = null;
   let graph: GraphAdapter | null = null;
+  let ingestQueue: BoundedQueue<QueuedEnvelope> | undefined;
+  let consumer: Consumer | undefined;
   if (!options.skipGraph) {
-    // Lazy-connecting driver; doesn't actually open a socket until first
-    // session call. validateTemplateRegistry runs synchronously so a broken
-    // template id fails startup, not a request.
+    // Register every template the runtime needs before the validator scans.
+    // Idempotent — multiple startServer calls (tests) don't double-register.
+    registerMemoryTemplates();
+    registerExtractTemplates();
     validateTemplateRegistry();
     graphDriver = getDriver(env);
     graph = new Neo4jGraphAdapter(graphDriver);
@@ -122,12 +142,50 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
         setGraphdbStatus({ status: "down", indexes: 0 });
       }
     })();
+
+    // Extractor pipeline. Requires the model endpoint to be configured —
+    // without it the queue stays present (counters report 0) but the
+    // consumer is not started; ingest will accept and enqueue, and
+    // operators see queue.depth grow as a signal to set the env vars.
+    ingestQueue = new BoundedQueue<QueuedEnvelope>(env.QUACK_QUEUE_CAPACITY);
+    setQueueDepthSource(() => ingestQueue!.getDepth());
+    if (env.QUACK_MODEL_API_KEY && env.QUACK_MODEL_BASE_URL) {
+      const extras = parseExtraPatternsFromEnv(env.QUACK_REDACTION_PATTERNS);
+      const redactor = createRedactor(extras);
+      const client = createExtractionClient({
+        baseURL: env.QUACK_MODEL_BASE_URL,
+        apiKey: env.QUACK_MODEL_API_KEY,
+        modelName: env.QUACK_MODEL_NAME,
+      });
+      const deadLetter = createDeadLetterWriter(
+        join(env.QUACK_DATA_DIR, "dead-letters.jsonl"),
+        env.QUACK_DEAD_LETTER_MAX_BYTES,
+      );
+      consumer = startConsumer({
+        queue: ingestQueue,
+        adapter: graph,
+        redactor,
+        client,
+        deadLetter,
+        concurrency: env.QUACK_EXTRACTOR_CONCURRENCY,
+      });
+      const stopConsumer = async () => {
+        if (consumer) await consumer.stop("signal");
+      };
+      process.once("SIGTERM", stopConsumer);
+      process.once("SIGINT", stopConsumer);
+    } else {
+      logger.info("extractor.disabled", { reason: "QUACK_MODEL_API_KEY or QUACK_MODEL_BASE_URL unset" });
+    }
   }
+  // Reference queueIncrement so the import isn't a TS unused warning while
+  // we wire up the ingest handler's per-request hook elsewhere.
+  void queueIncrement;
 
   const resolvedMcpHandler = options.mcpHandlerFactory
     ? options.mcpHandlerFactory(graph)
     : options.mcpHandler;
-  const fetch = buildFetch({ db, logger, mcpHandler: resolvedMcpHandler, graphDriver });
+  const fetch = buildFetch({ db, logger, mcpHandler: resolvedMcpHandler, graphDriver, ingestQueue });
 
   const server = Bun.serve({
     hostname: env.QUACK_BIND_HOST,

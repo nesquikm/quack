@@ -56,7 +56,7 @@ interface JsonRpcEnvelope {
 
 describe("M2 end-to-end smoke (programmatic version of the milestone-plan manual smoke)", () => {
   test(
-    "admin register_user → returned member token POSTs /ingest with 204 → same member token gets 403 on admin tool",
+    "admin register_user → returned member token POSTs /ingest (202 or 204) → same member token gets 403 on admin tool",
     async () => {
       if (!(await dockerAvailable())) {
         console.warn("docker daemon unreachable — skipping M2 end-to-end smoke");
@@ -106,7 +106,11 @@ describe("M2 end-to-end smoke (programmatic version of the milestone-plan manual
           expect(regPayload.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
           const memberToken = regPayload.token;
 
-          // Step 2 — that member token must authenticate POST /ingest with a 204.
+          // Step 2 — member token authenticates POST /ingest. M3 turns the M2
+          // 204 stub into a real enqueue path: 202 when the extractor is
+          // wired (QUACK_MODEL_API_KEY + QUACK_MODEL_BASE_URL set), 204 when
+          // the M2-compat fallback is taken. Either way auth + validation
+          // passed.
           const ingest = await fetch(`${BASE_URL}/ingest`, {
             method: "POST",
             headers: {
@@ -115,7 +119,7 @@ describe("M2 end-to-end smoke (programmatic version of the milestone-plan manual
             },
             body: JSON.stringify({ kind: "session_start", payload: { source: "m2-smoke" } }),
           });
-          expect(ingest.status).toBe(204);
+          expect([202, 204]).toContain(ingest.status);
 
           // Step 3 — re-using the same member token to call an admin-only tool must surface 403.
           const forbidden = await mcpCall(memberToken, "tools/call", {

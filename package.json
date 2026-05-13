@@ -16,6 +16,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "neo4j-driver": "^6.0.1",
+    "openai": "^6.37.0",
     "zod": "^4.4.3"
   }
 }

@@ -11,6 +11,13 @@ export interface MetricsSnapshot {
   };
 }
 
+// Queue counters — set to numeric (not null) once the extractor wires up.
+// `setQueueDepthSource` lets the consumer/queue register a live gauge for
+// `depth`. `queueIncrement` accumulates the counters.
+let depthGauge: (() => number) | null = null;
+let acceptedTotal = 0;
+let droppedFullTotal = 0;
+
 class CounterStore {
   startedAt = Date.now();
   private errors = new Map<string, number>();
@@ -26,13 +33,16 @@ class CounterStore {
       by_category[cat] = count;
       total += count;
     }
+    const queueDepth = depthGauge ? depthGauge() : null;
+    const queueAccepted = depthGauge ? acceptedTotal : null;
+    const queueDropped = depthGauge ? droppedFullTotal : null;
     return {
       errors: { since_boot_total: total, by_category },
       queue: {
-        depth: null,
+        depth: queueDepth,
         oldest_pending_age_seconds: null,
-        accepted_total: null,
-        dropped_full_total: null,
+        accepted_total: queueAccepted,
+        dropped_full_total: queueDropped,
       },
     };
   }
@@ -40,6 +50,9 @@ class CounterStore {
   resetForTests(): void {
     this.errors.clear();
     this.startedAt = Date.now();
+    depthGauge = null;
+    acceptedTotal = 0;
+    droppedFullTotal = 0;
   }
 }
 
@@ -59,4 +72,15 @@ export function getStartedAt(): number {
 
 export function resetCountersForTests(): void {
   store.resetForTests();
+}
+
+// Wire a live queue-depth gauge. Calling with null disables the queue block
+// (server_status reports null again).
+export function setQueueDepthSource(fn: (() => number) | null): void {
+  depthGauge = fn;
+}
+
+export function queueIncrement(field: "accepted_total" | "dropped_full_total"): void {
+  if (field === "accepted_total") acceptedTotal += 1;
+  else if (field === "dropped_full_total") droppedFullTotal += 1;
 }

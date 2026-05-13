@@ -1,0 +1,24 @@
+import { z } from "zod";
+import type { CypherTemplate } from "../../types";
+
+// MERGE on (project_id, path) — path is the canonical file natural key.
+export const upsertFileTemplate: CypherTemplate = {
+  id: "extract.upsert_file",
+  cypher: `
+MERGE (f:File {project_id: $project_id, path: $path})
+ON CREATE SET
+  f.id = randomUUID(),
+  f.repo_root = $repo_root,
+  f.created_at = $now
+ON MATCH SET
+  f.repo_root = coalesce(f.repo_root, $repo_root)
+RETURN f.id AS id, f.path AS path, f.project_id AS project_id
+`,
+  paramSchema: z.object({
+    path: z.string().min(1),
+    repo_root: z.string().nullable().optional(),
+    now: z.string().min(1),
+    project_id: z.number().optional(),
+  }),
+  accessMode: "WRITE",
+};

@@ -28,6 +28,22 @@ const envSchema = z.object({
   QUACK_NEO4J_URL: z.string().min(1).default("bolt://graphdb:7687"),
   QUACK_NEO4J_USER: z.string().min(1).default("neo4j"),
   QUACK_NEO4J_PASSWORD: z.string().min(1),
+
+  // Extraction loop (FR-4NY6S1).
+  QUACK_QUEUE_CAPACITY: z.coerce.number().int().positive().default(10000),
+  QUACK_EXTRACTOR_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  // Comma-separated extended-regex strings appended to the default redaction
+  // pattern set. Empty value = use defaults only.
+  QUACK_REDACTION_PATTERNS: z
+    .string()
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? undefined : v)),
+  QUACK_MODEL_NAME: z.string().min(1).default("gpt-4o-mini"),
+  QUACK_DEAD_LETTER_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50 * 1024 * 1024),
 });
 
 export type Env = z.infer<typeof envSchema>;
