@@ -14,3 +14,7 @@ data/
 coverage/
 # quack-hook is a client-side artifact, not part of the server image.
 dist/
+# Marketplace plugin source — installed via Claude Code, not part of the
+# server image. (.claude-plugin/ at repo root is also plugin-only.)
+plugins/
+.claude-plugin/

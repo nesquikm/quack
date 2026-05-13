@@ -1,0 +1,25 @@
+{
+  "name": "quack",
+  "owner": {
+    "name": "nesquikm"
+  },
+  "metadata": {
+    "description": "A personal memory layer for Claude Code: session hooks stream context to a local ingest server, a cheap LLM extracts entities/relations into Neo4j, and an MCP server exposes search/RAG back to Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "quack",
+      "version": "0.1.0",
+      "source": "./plugins/quack/",
+      "description": "Self-hosted Claude Code memory: hooks + MCP tools backed by Neo4j. Pair with the Quack server (docker compose stack in the same repo).",
+      "category": "memory",
+      "tags": [
+        "mcp",
+        "memory",
+        "hooks",
+        "graph",
+        "neo4j"
+      ]
+    }
+  ]
+}

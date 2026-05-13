@@ -2,8 +2,40 @@
 
 A personal memory layer for Claude Code.
 
+## Install as Claude Code plugin
+
+End users — the supported install path is the marketplace plugin. From a
+clone of this repo:
+
+```bash
+# 1. Bring up the server (one-time).
+docker compose up -d
+
+# 2. Build + install the hook binary on PATH (one-time).
+bun install && bun run build:hook
+install -m 755 dist/quack-hook ~/.local/bin/quack-hook
+
+# 3. Install the plugin (one-time).
+claude marketplace add ./
+/plugin install quack
+
+# 4. Bind each workspace (repeat per workspace).
+cd <your-workspace>
+export QUACK_ADMIN_TOKEN=<admin-token-from-first-boot>
+/quack:install <slug>
+direnv allow
+```
+
+Full walkthrough: [`plugins/quack/README.md`](plugins/quack/README.md). Operators
+running the server-only path (no plugin, hooks wired via your own
+`hooks.json`) — see the **Deployment** section below.
+
 <!-- BEGIN: quack-deployment-section -->
 ## Deployment
+
+> **Audience:** server operators running the Docker stack. End users should
+> follow the plugin install path above instead — `claude marketplace add ./`
+> + `/plugin install quack` wraps every step in this section.
 
 Quack ships as a Docker Compose stack. Compose v2 (the `docker compose` CLI
 plugin) is required — Compose v1 (`docker-compose` binary) is not supported.

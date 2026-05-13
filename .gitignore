@@ -9,3 +9,5 @@ dist/
 coverage/
 # Bun --compile build cache artifacts (transient).
 .*.bun-build
+# Local /implement claim locks (mode: none).
+.dpt-locks/

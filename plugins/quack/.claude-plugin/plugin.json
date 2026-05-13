@@ -1,0 +1,20 @@
+{
+  "name": "quack",
+  "version": "0.1.0",
+  "description": "Self-hosted Claude Code memory: hooks stream session context to a local ingest server, a cheap LLM extracts entities/relations into Neo4j, and an MCP server exposes search/RAG back.",
+  "author": {
+    "name": "nesquikm",
+    "url": "https://github.com/nesquikm"
+  },
+  "homepage": "https://github.com/nesquikm/quack",
+  "repository": "https://github.com/nesquikm/quack",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "memory",
+    "hooks",
+    "graph",
+    "neo4j",
+    "claude-code"
+  ]
+}

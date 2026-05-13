@@ -1,0 +1,7 @@
+{
+  "type": "http",
+  "url": "${QUACK_SERVER_URL:-http://127.0.0.1:7474}/mcp",
+  "headers": {
+    "Authorization": "Bearer ${QUACK_TOKEN}"
+  }
+}
