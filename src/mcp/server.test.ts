@@ -152,17 +152,72 @@ describe("MCP server integration (SDK + streamable HTTP transport)", () => {
     }
   });
 
-  test("tool registry exposes the expected v1 surface", () => {
+  test("tool registry exposes the expected v1 surface (admin + memory plane)", () => {
     const names = listTools();
-    expect(names).toContain("register_user");
-    expect(names).toContain("remove_user");
-    expect(names).toContain("create_project");
-    expect(names).toContain("delete_project");
-    expect(names).toContain("add_member");
-    expect(names).toContain("remove_member");
-    expect(names).toContain("revoke_token");
-    expect(names).toContain("list_projects");
-    expect(names).toContain("list_users");
-    expect(names).toContain("server_status");
+    for (const n of [
+      "register_user",
+      "remove_user",
+      "create_project",
+      "delete_project",
+      "add_member",
+      "remove_member",
+      "revoke_token",
+      "list_projects",
+      "list_users",
+      "server_status",
+      "search_memory",
+      "get_neighbors",
+      "path_between",
+      "recent_decisions",
+    ]) {
+      expect(names).toContain(n);
+    }
+  });
+
+  test("memory tools carry the AC-DPY5GQ.11 <memory> + 'no streaming' clause in their description", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+        body: rpc("tools/list").body,
+      });
+      const body = (await res.json()) as JsonRpcResponse;
+      const tools = (body.result as { tools: Array<{ name: string; description: string }> }).tools;
+      const memoryTools = ["search_memory", "get_neighbors", "path_between", "recent_decisions"];
+      for (const name of memoryTools) {
+        const t = tools.find((x) => x.name === name);
+        expect(t).toBeDefined();
+        expect(t!.description).toContain("<memory>");
+        expect(t!.description).toContain("untrusted text");
+        expect(t!.description).toContain("No streaming");
+      }
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("a member token (non-admin) can call search_memory but no_graph_adapter surfaces because skipGraph", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      // Admin can call search_memory; with skipGraph the handler reports no_graph_adapter.
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+        body: rpc("tools/call", { name: "search_memory", arguments: { entities: ["any"] } }).body,
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as JsonRpcResponse;
+      const result = body.result as { isError?: boolean; content: Array<{ text: string }> };
+      expect(result.isError).toBe(true);
+      const payload = JSON.parse(result.content[0]!.text) as { error: string };
+      expect(payload.error).toBe("no_graph_adapter");
+    } finally {
+      server.stop(true);
+      db.close();
+    }
   });
 });

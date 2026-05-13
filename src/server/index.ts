@@ -11,6 +11,7 @@ import { Logger, createBufferLogger } from "../shared/logger";
 import { getDriver, probeGraphdb } from "../graph/driver";
 import { runMigrations as runGraphMigrations } from "../graph/migrations";
 import { validateTemplateRegistry } from "../graph/templates/index";
+import { Neo4jGraphAdapter, type GraphAdapter } from "../graph/adapter";
 import packageJson from "../../package.json" with { type: "json" };
 import type { Neo4jDriver } from "../graph/types";
 
@@ -69,6 +70,10 @@ export function buildFetch(opts: BuildAppOptions): (request: Request) => Promise
 export interface StartServerOptions {
   env?: Env;
   mcpHandler?: BuildAppOptions["mcpHandler"];
+  // Optional factory — called with the GraphAdapter once the driver is wired,
+  // returns the McpHandlerFn. Prefer this over `mcpHandler` so memory-plane
+  // tools have access to the adapter without a circular construction step.
+  mcpHandlerFactory?: (graph: GraphAdapter | null) => BuildAppOptions["mcpHandler"];
   // Test seam: opt out of touching Neo4j (driver creation + migrations).
   // Production startServer always wires the graph; bind/server tests that
   // don't need it set this to true so `/health` reports `graphdb: "down"`
@@ -76,7 +81,7 @@ export interface StartServerOptions {
   skipGraph?: boolean;
 }
 
-export function startServer(options: StartServerOptions = {}): { server: AnyServer; db: Database; logger: Logger; graphDriver: Neo4jDriver | null } {
+export function startServer(options: StartServerOptions = {}): { server: AnyServer; db: Database; logger: Logger; graphDriver: Neo4jDriver | null; graph: GraphAdapter | null } {
   const env = options.env ?? parseEnv();
   mkdirSync(env.QUACK_DATA_DIR, { recursive: true });
   const dbPath = join(env.QUACK_DATA_DIR, "auth.sqlite");
@@ -91,12 +96,14 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
   const { logger } = createBufferLogger([env.QUACK_MODEL_API_KEY, env.QUACK_BOOTSTRAP_TOKEN]);
 
   let graphDriver: Neo4jDriver | null = null;
+  let graph: GraphAdapter | null = null;
   if (!options.skipGraph) {
     // Lazy-connecting driver; doesn't actually open a socket until first
     // session call. validateTemplateRegistry runs synchronously so a broken
     // template id fails startup, not a request.
     validateTemplateRegistry();
     graphDriver = getDriver(env);
+    graph = new Neo4jGraphAdapter(graphDriver);
     // Fire-and-forget migration: index DDL is idempotent and tolerant of
     // restart-time races. A migration failure logs at error level but does
     // not crash startup — /health surfaces graphdb: "down" until Neo4j
@@ -117,7 +124,10 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
     })();
   }
 
-  const fetch = buildFetch({ db, logger, mcpHandler: options.mcpHandler, graphDriver });
+  const resolvedMcpHandler = options.mcpHandlerFactory
+    ? options.mcpHandlerFactory(graph)
+    : options.mcpHandler;
+  const fetch = buildFetch({ db, logger, mcpHandler: resolvedMcpHandler, graphDriver });
 
   const server = Bun.serve({
     hostname: env.QUACK_BIND_HOST,
@@ -126,5 +136,5 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
   });
 
   logger.info("server.started", { port: env.PORT, host: env.QUACK_BIND_HOST, version: SERVER_VERSION });
-  return { server, db, logger, graphDriver };
+  return { server, db, logger, graphDriver, graph };
 }
