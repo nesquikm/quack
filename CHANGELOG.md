@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-05-13 — "Hermes (hotfix)"
+
+### Fixed
+
+- **Plugin hooks now actually fire.** v0.2.0 shipped `plugins/quack/hooks/{session_start,stop,post_tool_use}.sh` but no `hooks/hooks.json` manifest; Claude Code requires explicit hook registration keyed by event name and the wrapper scripts were inert on every session (silent no-op). v0.2.1 ships `plugins/quack/hooks/hooks.json` declaring `SessionStart` / `Stop` / `PostToolUse` with `${CLAUDE_PLUGIN_ROOT}/hooks/<name>.sh` command refs. The plugin version is bumped to 0.2.0 inside `plugins/quack/.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` (the plugin's own first usable shipment); `tests/plugin-files.test.ts` adds an AC-ZSN2GG.3 regression guard asserting the manifest's event-to-script mapping.
+- **AC-ZSN2GG.11 — manual smoke verified.** The end-to-end pipeline that v0.2.0 documented but couldn't exercise (deferred) now runs green against Google's Gemini OpenAI-compatibility endpoint with `QUACK_MODEL_NAME=gemini-3-flash-preview`: 6 envelopes accepted via `/ingest`, 0 extraction errors, 6 Decision + 9 Entity + 6 File + 1 Feedback nodes landed in Neo4j (`project_id=2`), and `search_memory({entities:["Duckling","mascot","rubber duck"]})` recalled both expected entities with the canonical `<memory>…</memory>` wrap. The archived M4 plan and FR record the verification.
+
+Total test count at release: 314 tests, 0 failures, 0 errors.
+
 ## [0.2.0] — 2026-05-13 — "Hermes"
 
 ### Added
