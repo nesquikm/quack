@@ -151,3 +151,14 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-S2D0Z5.9 (README hooks section) | `README.md` | manual review + `tests/compose-config.test.ts` |
 | AC-S2D0Z5.10–12 (perf + integration test) | `src/hooks/*` | `tests/hook-binary.test.ts` (skipped when build fails) |
 | AC-S2D0Z5.13 (.dockerignore excludes dist/) | `.dockerignore` | `tests/compose-config.test.ts` |
+| AC-ZSN2GG.1 (marketplace.json canonical shape) | `.claude-plugin/marketplace.json` | `tests/plugin-version-sync.test.ts` |
+| AC-ZSN2GG.2 (plugin.json + version parity) | `plugins/quack/.claude-plugin/plugin.json` | `tests/plugin-version-sync.test.ts` |
+| AC-ZSN2GG.3 (three chmod +x hook wrappers + silent-disable) | `plugins/quack/hooks/{session_start,stop,post_tool_use}.sh` | `tests/plugin-hooks-syntax.test.ts` |
+| AC-ZSN2GG.4 (mcp-servers/quack.json env-substituted http transport) | `plugins/quack/mcp-servers/quack.json` | `tests/plugin-files.test.ts` |
+| AC-ZSN2GG.5 (/quack:install slash command) | `plugins/quack/commands/quack-install.md` | manual smoke (deferred); shape pinned by file presence in `tests/plugin-install-local.test.ts` |
+| AC-ZSN2GG.6 (plugin README four-step install flow) | `plugins/quack/README.md` | `tests/plugin-files.test.ts` |
+| AC-ZSN2GG.7 (repo README install-as-plugin section) | `README.md` | `tests/plugin-files.test.ts` |
+| AC-ZSN2GG.8 (.dockerignore excludes plugins/) | `.dockerignore` | `tests/plugin-files.test.ts` |
+| AC-ZSN2GG.9 (plugin-install-local round-trip + invariants) | n/a — test-only | `tests/plugin-install-local.test.ts` (source-tree invariants always; real CLI round-trip opt-in via `QUACK_E2E_PLUGIN=1`) |
+| AC-ZSN2GG.10 (plugin / marketplace version-sync test) | n/a — test-only | `tests/plugin-version-sync.test.ts` |
+| AC-ZSN2GG.11 (M4 closeout manual smoke) | `plugins/quack/README.md` (procedure) | deferred — manual operator step; requires live Claude Code workspace + real model API key |

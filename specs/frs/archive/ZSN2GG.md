@@ -1,8 +1,8 @@
 ---
 title: Quack plugin packaging (marketplace + hooks + MCP config + /quack:install)
 milestone: M4
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-13T10:56:30Z
 id: fr_01KRG9F0C6GKZB5YZ34CZSN2GG
 created_at: 2026-05-13T11:00:00Z
 ---
@@ -103,3 +103,7 @@ None — pure markdown + shell + JSON files. No `node_modules`, no build step in
 - Plugin version vs. server version: decoupled. The plugin is a tiny wrapper; it can ship updates more frequently than the server (or vice versa). The version-sync test (AC.10) only ties together the two plugin-side JSON files.
 - Future M5+ additive commands (`/quack:status`, `/quack:recall`, `/quack:register-user`) are straightforward markdown additions under `plugins/quack/commands/`. The current v1 surface is intentionally minimum-viable.
 - `claude marketplace add` against a local path (`./` or `/Users/<user>/workspace/quack`) gives a "private marketplace" install — the operator can publish to a public marketplace later by pushing to GitHub and providing the URL instead. No code changes needed for that transition.
+
+## Implementation notes
+
+- plugin.json registration keys (Pass 2 round 2, advisory) — review suggested adding explicit `hooks` / `mcp-servers` / `commands` registration keys to `plugins/quack/.claude-plugin/plugin.json`. Refuted by precedent: the reference plugin manifest at `~/workspace/dev-process-toolkit/plugins/dev-process-toolkit/.claude-plugin/plugin.json` ships the same minimal keys-only shape and works in production (Claude Code uses directory-based discovery for `hooks/`, `mcp-servers/`, `commands/`). Current manifest is correct as-is.
