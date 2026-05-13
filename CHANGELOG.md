@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-13 — "Hermes"
+
+### Added
+
+- **FR-ZSN2GG** — Quack ships as a Claude Code marketplace plugin in the same repo as the server. `.claude-plugin/marketplace.json` at the repo root declares `./plugins/quack/` as the single plugin source. Inside `plugins/quack/`: plugin manifest (`plugin.json`), three thin-shell hook wrappers under `hooks/` that `exec quack-hook <kind> "$@"` against the M3-built binary (silent-disable + one stderr line when binary is not on PATH so a broken install never breaks a Claude Code session), one MCP server declaration (`mcp-servers/quack.json`) with `${QUACK_SERVER_URL:-http://127.0.0.1:7474}` default + `${QUACK_TOKEN}` intentionally-no-default (absence yields a one-time `401` that prompts the user to run `/quack:install`), one `/quack:install <slug>` slash command (slug regex `^[a-z0-9][a-z0-9_-]{0,62}$`; reads `QUACK_ADMIN_TOKEN`; calls admin MCP tools `create_project` / `register_user` / `add_member` with graceful `*_exists` / `already_member` handling; writes a per-workspace `.envrc` for direnv with `chmod 600`; follow-up instructions lead with `unset QUACK_ADMIN_TOKEN`), and a plugin README documenting the full install flow. Server source (`src/`, `compose.yml`, `Dockerfile`, `specs/`, `tests/`) lives outside the plugin source path and is **NOT** included in the marketplace install. Repo-root `README.md` gains a new "Install as Claude Code plugin" section pointing end users at the plugin path; the existing Deployment section is amended for server operators. `.dockerignore` excludes `plugins/` and `.claude-plugin/` so the marketplace surface stays out of the server image. Install command shape: `claude plugin marketplace add ./` + `claude plugin install quack@quack`; installed tree lands at `~/.claude/plugins/cache/quack/quack/<version>/`. Tests: `tests/plugin-version-sync.test.ts` (plugin.json ↔ marketplace.json parity), `tests/plugin-hooks-syntax.test.ts` (`chmod +x` + `sh -n` + silent-disable marker), `tests/plugin-install-local.test.ts` (source-tree invariants always; opt-in real CLI round-trip via `QUACK_E2E_PLUGIN=1`), `tests/plugin-files.test.ts` (mcp-servers + plugin/repo READMEs + dockerignore shape pins). AC-ZSN2GG.11 (end-to-end manual smoke: real Claude Code session → `Decision` node in Neo4j → recall via `search_memory` from a fresh session) is documented in the plugin README and deferred from automation.
+
+### Fixed
+
+- `bun test` integration suites that spawn Neo4j containers in `beforeAll` (under `src/{graph,extract,mcp}/`) no longer time out at Bun's 5000ms default. The `, 180_000` second arg on `beforeAll(...)` is silently ignored — that signature is `test()`-specific — so the project's `test` script now passes `--timeout 180000` and `CLAUDE.md`'s gate command is `bunx tsc --noEmit && bun run test`. The pre-M4 v0.1.0 ship recorded `288 tests, 0 failures, 0 errors` only because the Docker daemon happened to be unreachable at that moment and the integration tests short-circuited via `dockerAvailable()`; the gate is now reliable across both states.
+
+Total test count at release: 314 tests, 0 failures, 0 errors.
+
 ## [0.1.0] — 2026-05-13 — "Mnemosyne"
 
 ### Added
