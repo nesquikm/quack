@@ -7,7 +7,7 @@
   "packageManager": "bun@1.3.13",
   "scripts": {
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test --timeout 180000",
     "build:hook": "bun build src/hooks/quack-hook.ts --compile --outfile dist/quack-hook"
   },
   "devDependencies": {

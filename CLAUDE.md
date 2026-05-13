@@ -48,8 +48,10 @@ specs/
 ## Key Commands
 
 ```bash
-# Test
-bun test
+# Test (script wrapper applies --timeout 180000 so Neo4j-spawn integration
+# tests get adequate beforeAll runway; bare `bun test` uses Bun's 5s default
+# which times out before fresh Neo4j containers are ready).
+bun run test
 
 # Typecheck
 bunx tsc --noEmit
@@ -61,7 +63,7 @@ bun install
 **Gating rule:** Every feature must pass before merging:
 
 ```bash
-bunx tsc --noEmit && bun test
+bunx tsc --noEmit && bun run test
 ```
 
 ## Workflows
