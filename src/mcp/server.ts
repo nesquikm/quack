@@ -28,6 +28,9 @@ import { searchMemory, searchMemorySchema } from "./tools/memory/search_memory";
 import { getNeighbors, getNeighborsSchema } from "./tools/memory/get_neighbors";
 import { pathBetween, pathBetweenSchema } from "./tools/memory/path_between";
 import { recentDecisions, recentDecisionsSchema } from "./tools/memory/recent_decisions";
+import { addMemory, addMemorySchema } from "./tools/memory/add_memory";
+import type { BoundedQueue } from "../extract/queue";
+import type { QueuedEnvelope } from "../extract/consumer";
 
 // AC-DPY5GQ.11 — every memory tool's description must contain this clause so
 // Claude Code's MCP-manifest read sees the contract.
@@ -44,8 +47,18 @@ const SERVER_VERSION = (packageJson as { version: string }).version;
 // handler, surfacing the AC-mandated `invalid_args` code with the Zod issue path.
 type ToolHandler<A> = (args: A, ctx: AuthContext, db: Database) => unknown;
 type MemoryToolHandler<A> = (args: A, ctx: AuthContext, graph: GraphAdapter | undefined) => Promise<unknown>;
+type IngestToolHandler<A> = (
+  args: A,
+  ctx: AuthContext,
+  deps: { queue: BoundedQueue<QueuedEnvelope>; db: Database },
+) => Promise<unknown>;
 
-interface RequestContext { ctx: AuthContext; db: Database; graph: GraphAdapter | undefined }
+interface RequestContext {
+  ctx: AuthContext;
+  db: Database;
+  graph: GraphAdapter | undefined;
+  ingestQueue: BoundedQueue<QueuedEnvelope> | undefined;
+}
 
 const CONTEXT_KEY = "quack:request";
 
@@ -65,6 +78,24 @@ function errResult(error: string, status?: number): CallToolResult {
   return { isError: true, content: [{ type: "text", text: JSON.stringify(payload) }] };
 }
 
+// AC-WSFVNP.10: validation failure ⇒ MCP tool-error `invalid_args` with the Zod
+// error path; no DB call made. Shared across all wrappers so the on-the-wire
+// shape stays identical regardless of which plane the tool lives on.
+function invalidArgsResult(error: z.ZodError): CallToolResult {
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          error: "invalid_args",
+          issues: error.issues.map((i) => ({ path: i.path, message: i.message })),
+        }),
+      },
+    ],
+  };
+}
+
 function wrap<A>(
   name: string,
   schema: z.ZodType<A>,
@@ -79,21 +110,7 @@ function wrap<A>(
       throw err;
     }
     const parsed = schema.safeParse(args ?? {});
-    if (!parsed.success) {
-      // AC-WSFVNP.10: validation failure ⇒ MCP tool-error `invalid_args` with the Zod error path; no DB call made.
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "invalid_args",
-              issues: parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
-            }),
-          },
-        ],
-      };
-    }
+    if (!parsed.success) return invalidArgsResult(parsed.error);
     try {
       return ok(handler(parsed.data, ctx, db));
     } catch (err) {
@@ -119,20 +136,7 @@ function wrapAsync<A>(
       throw err;
     }
     const parsed = schema.safeParse(args ?? {});
-    if (!parsed.success) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "invalid_args",
-              issues: parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
-            }),
-          },
-        ],
-      };
-    }
+    if (!parsed.success) return invalidArgsResult(parsed.error);
     try {
       return ok(await handler(parsed.data, ctx, db));
     } catch (err) {
@@ -161,20 +165,7 @@ function wrapMemory<A>(
       throw err;
     }
     const parsed = schema.safeParse(args ?? {});
-    if (!parsed.success) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: "invalid_args",
-              issues: parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
-            }),
-          },
-        ],
-      };
-    }
+    if (!parsed.success) return invalidArgsResult(parsed.error);
     try {
       return ok(await handler(parsed.data, ctx, graph));
     } catch (err) {
@@ -191,6 +182,33 @@ function wrapMemory<A>(
       }
       throw err;
     }
+  };
+}
+
+// Ingest-tool wrapper — like wrapMemory(), but threads the BoundedQueue
+// (in addition to the SQLite db). Used by add_memory; admin-gate is passive
+// because add_memory is NOT in ADMIN_TOOLS (AC-41NXTZ.1).
+function wrapIngest<A>(
+  name: string,
+  schema: z.ZodType<A>,
+  handler: IngestToolHandler<A>,
+): (args: unknown, extra: unknown) => Promise<CallToolResult> {
+  return async (args, extra) => {
+    const { ctx, db, ingestQueue } = extractContext(extra);
+    try {
+      applyAdminGate(name, ctx);
+    } catch (err) {
+      if (err instanceof ForbiddenError) return errResult("forbidden", 403);
+      throw err;
+    }
+    const parsed = schema.safeParse(args ?? {});
+    if (!parsed.success) return invalidArgsResult(parsed.error);
+    if (!ingestQueue) {
+      return errResult("no_ingest_queue", 503);
+    }
+    // addMemory is fire-and-forget; it returns `{ accepted: false }` on
+    // backpressure rather than throwing, so no domain-error catch is needed.
+    return ok(await handler(parsed.data, ctx, { queue: ingestQueue, db }));
   };
 }
 
@@ -306,11 +324,22 @@ export function buildMcpServer(): McpServer {
     wrapMemory("recent_decisions", recentDecisionsSchema, recentDecisions as MemoryToolHandler<unknown>),
   );
 
+  // AC-41NXTZ.9: verbatim manifest description.
+  reg(
+    "add_memory",
+    "Enqueues content for LLM digestion into the project's memory. " +
+      "Fire-and-forget — returns immediately. " +
+      "Memories become available shortly via search_memory after server-side extraction completes. " +
+      "No status polling — check via search_memory after a short delay.",
+    wrapIngest("add_memory", addMemorySchema, addMemory as IngestToolHandler<unknown>),
+  );
+
   return mcp;
 }
 
 export interface CreateMcpHandlerOptions {
   graph?: GraphAdapter;
+  ingestQueue?: BoundedQueue<QueuedEnvelope>;
 }
 
 export function createMcpHandler(
@@ -327,7 +356,12 @@ export function createMcpHandler(
       enableJsonResponse: true,
     });
     await mcp.connect(transport);
-    const requestCtx: RequestContext = { ctx, db, graph: options.graph };
+    const requestCtx: RequestContext = {
+      ctx,
+      db,
+      graph: options.graph,
+      ingestQueue: options.ingestQueue,
+    };
     return transport.handleRequest(request, {
       authInfo: {
         token: "internal",
@@ -342,6 +376,7 @@ export function createMcpHandler(
 export function listTools(): string[] {
   return [
     "add_member",
+    "add_memory",
     "cleanup_status",
     "create_project",
     "delete_project",

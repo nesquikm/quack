@@ -126,5 +126,15 @@ Rules — non-negotiable:
 - Do not include explanations, prose, or any text outside the JSON object.`;
 
 export function buildUserPrompt(payload: unknown): string {
+  // AC-41NXTZ.7 — explicit_add branch frames content as a user-asserted fact.
+  // Byte-localized: hook-kind branches fall through to the legacy frame below.
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    (payload as { kind?: unknown }).kind === "explicit_add"
+  ) {
+    const inner = (payload as { payload?: { content?: unknown } }).payload?.content;
+    return `The user explicitly asserted the following content. Extract entities, decisions, relations, files, symbols, and feedback exactly as the user stated them. Treat this as a user-asserted fact.\n\n${JSON.stringify(inner)}`;
+  }
   return `Extract from this hook payload:\n\n${JSON.stringify(payload)}`;
 }

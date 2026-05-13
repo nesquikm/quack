@@ -8,7 +8,13 @@ import { queueIncrement } from "../metrics/counters";
 
 // HookEnvelope per AC-4NY6S1.1. HookKind is the literal-string union from
 // FR-S2D0Z5 — for M3 we ship session_start / stop / post_tool_use.
-export const HookKindSchema = z.enum(["session_start", "stop", "post_tool_use"]);
+// FR-41NXTZ AC.5 (M5) — extended with "explicit_add" for the add_memory MCP tool.
+export const HookKindSchema = z.enum([
+  "session_start",
+  "stop",
+  "post_tool_use",
+  "explicit_add",
+]);
 export const HookEnvelopeSchema = z.object({
   kind: HookKindSchema,
   payload: z.record(z.string(), z.unknown()),

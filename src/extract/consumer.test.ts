@@ -112,4 +112,40 @@ describe("startConsumer", () => {
     await consumer.stop("test");
     expect(getSnapshot().errors.by_category["redaction_match"]).toBe(1);
   });
+
+  // AC-41NXTZ.6: redaction pass runs against payload.content BEFORE cheap-model
+  // call when kind === "explicit_add". The consumer's existing redactor walks
+  // every string in env.payload, so a secret embedded inside payload.content
+  // must reach client.extract redacted. This is the add_memory-specific path.
+  test("AC-41NXTZ.6: explicit_add payload.content is redacted before cheap-model call", async () => {
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+    queue.enqueue({
+      kind: "explicit_add",
+      payload: { content: "ship key=sk-abcdefghijklmnopqrstuvwx today" },
+      ctx,
+      queued_at: "t",
+    });
+    let observedPayload: unknown = undefined;
+    const client: ExtractionClient = {
+      async extract(arg) {
+        observedPayload = (arg as { payload?: unknown } | undefined)?.payload;
+        return EMPTY_RESULT;
+      },
+    };
+    const consumer = startConsumer({
+      queue,
+      adapter: makeAdapter(),
+      redactor: createRedactor(),
+      client,
+      deadLetter: makeDeadLetter([]),
+      concurrency: 1,
+      pollMs: 10,
+    });
+    await consumer.drainOnce();
+    await consumer.stop("test");
+    const content = (observedPayload as { content?: string } | undefined)?.content ?? "";
+    expect(content).not.toContain("sk-abcdefghijklmnopqrstuvwx");
+    expect(content).toContain("«REDACTED»");
+    expect(getSnapshot().errors.by_category["redaction_match"]).toBeGreaterThanOrEqual(1);
+  });
 });

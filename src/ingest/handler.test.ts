@@ -106,4 +106,22 @@ describe("handleIngest", () => {
       expect(parsed.success).toBe(true);
     }
   });
+
+  // AC-41NXTZ.5 — HookKind union is extended with "explicit_add".
+  test("AC-41NXTZ.5: HookEnvelopeSchema accepts kind: 'explicit_add' (M5 extension)", () => {
+    const parsed = HookEnvelopeSchema.safeParse({
+      kind: "explicit_add",
+      payload: { content: "remember this" },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  test("AC-41NXTZ.5: M3 hook kinds remain accepted after M5 union extension (backward-compat)", () => {
+    // Ordering guarantee from the AC: "session_start | stop | post_tool_use | explicit_add".
+    // The existing three kinds must NOT regress.
+    for (const kind of ["session_start", "stop", "post_tool_use", "explicit_add"]) {
+      const parsed = HookEnvelopeSchema.safeParse({ kind, payload: {} });
+      expect(parsed.success).toBe(true);
+    }
+  });
 });

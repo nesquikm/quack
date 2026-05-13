@@ -90,10 +90,15 @@ export function buildFetch(opts: BuildAppOptions): (request: Request) => Promise
 export interface StartServerOptions {
   env?: Env;
   mcpHandler?: BuildAppOptions["mcpHandler"];
-  // Optional factory — called with the GraphAdapter once the driver is wired,
-  // returns the McpHandlerFn. Prefer this over `mcpHandler` so memory-plane
-  // tools have access to the adapter without a circular construction step.
-  mcpHandlerFactory?: (graph: GraphAdapter | null) => BuildAppOptions["mcpHandler"];
+  // Optional factory — called with the GraphAdapter (and ingest queue if wired)
+  // once the driver is wired, returns the McpHandlerFn. Prefer this over
+  // `mcpHandler` so memory-plane tools have access to the adapter, and so
+  // add_memory (FR-41NXTZ) has access to the ingest queue, without a circular
+  // construction step.
+  mcpHandlerFactory?: (
+    graph: GraphAdapter | null,
+    ingestQueue?: BoundedQueue<QueuedEnvelope>,
+  ) => BuildAppOptions["mcpHandler"];
   // Test seam: opt out of touching Neo4j (driver creation + migrations).
   // Production startServer always wires the graph; bind/server tests that
   // don't need it set this to true so `/health` reports `graphdb: "down"`
@@ -199,7 +204,7 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
   void queueIncrement;
 
   const resolvedMcpHandler = options.mcpHandlerFactory
-    ? options.mcpHandlerFactory(graph)
+    ? options.mcpHandlerFactory(graph, ingestQueue)
     : options.mcpHandler;
   const fetch = buildFetch({ db, logger, mcpHandler: resolvedMcpHandler, graphDriver, ingestQueue });
 
