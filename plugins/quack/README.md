@@ -51,12 +51,13 @@ Code sessions.
 From the cloned `quack/` repo root:
 
 ```bash
-claude marketplace add ./
-/plugin install quack
+claude plugin marketplace add ./
+claude plugin install quack@quack
 ```
 
 This copies `plugins/quack/` (this directory) into your Claude Code plugin
-install root. Verify with `/plugin list`.
+install root (`~/.claude/plugins/cache/quack/quack/<version>/`). Verify
+with `claude plugin list` — you should see `quack@quack` enabled.
 
 ### Step 4. Per-workspace: bind a project and let direnv load it
 
@@ -120,7 +121,8 @@ Per-workspace tokens are non-admin and safe to drop into `.envrc`.
 
 ## Manual smoke (AC-ZSN2GG.11)
 
-After installing the plugin in a workspace:
+After installing the plugin in a workspace (`claude plugin marketplace
+add <quack-repo> && claude plugin install quack@quack`):
 
 1. Confirm the server is up: `curl -fsS http://127.0.0.1:7474/health`.
 2. Open a fresh Claude Code session in the workspace.
@@ -141,13 +143,13 @@ After installing the plugin in a workspace:
 
 ## Troubleshooting
 
-- **`/plugin install quack` fails** — check `claude marketplace list` shows
-  the local marketplace; re-run `claude marketplace add ./` from the
-  Quack repo root.
+- **`claude plugin install quack@quack` fails** — check `claude plugin
+  marketplace list` shows the local marketplace; re-run
+  `claude plugin marketplace add ./` from the Quack repo root.
 - **`[quack-hook plugin] binary not found`** stderr line — `quack-hook` is
   not on PATH. Re-run step 2 or re-export your PATH in
   `~/.zshrc` / `~/.bashrc`.
-- **MCP server fails to connect after `/plugin install`** — usually means
+- **MCP server fails to connect after `claude plugin install`** — usually means
   `QUACK_TOKEN` is unset. `/quack:install <slug>` mints one.
 - **Hooks fire but nothing lands in Neo4j** — tail
   `docker compose logs -f quack` for `ingest_envelope_rejected` lines. The

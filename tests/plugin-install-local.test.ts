@@ -1,6 +1,5 @@
 import { describe, test, expect } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 // AC-ZSN2GG.9 — exercise the marketplace round-trip locally.
@@ -14,17 +13,28 @@ import { join } from "node:path";
 //    clean. This is the cheap, deterministic guard.
 //
 // 2. **Real CLI round-trip (opt-in via `QUACK_E2E_PLUGIN=1` + claude on
-//    PATH).** Spawns `claude marketplace add <repo>` then
-//    `claude plugin install quack`, then asserts the *installed* plugin
-//    dir matches the same shape. Default-off because the CLI mutates
-//    the user's global Claude Code state; we don't want a routine
-//    `bun test` rearranging the developer's plugin list. `test.skipIf`
-//    means the runner reports a visible SKIP (not a fake PASS).
+//    PATH).** Spawns `claude plugin marketplace add <repo>` then
+//    `claude plugin install quack`, then locates the installed copy via
+//    `claude plugin list --json` (the CLI publishes `installPath` so we
+//    don't have to guess at the cache directory layout), and asserts the
+//    installed tree matches the same shape. Default-off because the CLI
+//    mutates the user's global Claude Code state; we don't want a
+//    routine `bun test` rearranging the developer's plugin list.
+//    `test.skipIf` means the runner reports a visible SKIP (not a fake
+//    PASS).
 
 const REPO_ROOT = join(import.meta.dir, "..");
 const PLUGIN_DIR = join(REPO_ROOT, "plugins/quack");
 const CLAUDE_ON_PATH = Bun.which("claude") !== null;
 const E2E_OPT_IN = Bun.env.QUACK_E2E_PLUGIN === "1";
+
+interface InstalledPlugin {
+  id: string;
+  version: string;
+  scope: string;
+  enabled: boolean;
+  installPath: string;
+}
 
 describe("plugin install — source-tree invariants (always)", () => {
   test("plugin source contains required plugin-scoped files", () => {
@@ -77,23 +87,37 @@ describe("plugin install — source-tree invariants (always)", () => {
 
 describe("plugin install — real CLI round-trip (opt-in)", () => {
   test.skipIf(!E2E_OPT_IN || !CLAUDE_ON_PATH)(
-    "claude marketplace add + plugin install lands a clean tree at ~/.claude/plugins/quack/",
+    "claude plugin marketplace add + plugin install lands a clean tree at the installPath",
     async () => {
-      const add = Bun.spawn(["claude", "marketplace", "add", REPO_ROOT], {
+      const add = Bun.spawn(["claude", "plugin", "marketplace", "add", REPO_ROOT], {
         stdout: "pipe",
         stderr: "pipe",
       });
       const [addCode, addErr] = await Promise.all([add.exited, new Response(add.stderr).text()]);
-      expect(addCode, `claude marketplace add failed: ${addErr}`).toBe(0);
+      expect(addCode, `claude plugin marketplace add failed: ${addErr}`).toBe(0);
 
-      const inst = Bun.spawn(["claude", "plugin", "install", "quack"], {
+      // `quack@quack` disambiguates against any other marketplace that
+      // might also publish a `quack` plugin in the user's setup.
+      const inst = Bun.spawn(["claude", "plugin", "install", "quack@quack"], {
         stdout: "pipe",
         stderr: "pipe",
       });
       const [instCode, instErr] = await Promise.all([inst.exited, new Response(inst.stderr).text()]);
-      expect(instCode, `claude plugin install quack failed: ${instErr}`).toBe(0);
+      expect(instCode, `claude plugin install quack@quack failed: ${instErr}`).toBe(0);
 
-      const installedRoot = join(homedir(), ".claude", "plugins", "quack");
+      // Discover the installed location via the CLI rather than hard-
+      // coding the cache layout — the CLI publishes `installPath` per
+      // plugin in its JSON list output.
+      const list = Bun.spawn(["claude", "plugin", "list", "--json"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [listCode, listOut] = await Promise.all([list.exited, new Response(list.stdout).text()]);
+      expect(listCode).toBe(0);
+      const installed = JSON.parse(listOut) as InstalledPlugin[];
+      const quackEntries = installed.filter((p) => p.id === "quack@quack");
+      expect(quackEntries.length, "expected at least one installed quack@quack entry").toBeGreaterThan(0);
+      const installedRoot = quackEntries[0]!.installPath;
       expect(existsSync(installedRoot), `expected installed plugin at ${installedRoot}`).toBe(true);
 
       const requiredAtInstall = [

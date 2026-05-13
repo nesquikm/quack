@@ -16,8 +16,8 @@ bun install && bun run build:hook
 install -m 755 dist/quack-hook ~/.local/bin/quack-hook
 
 # 3. Install the plugin (one-time).
-claude marketplace add ./
-/plugin install quack
+claude plugin marketplace add ./
+claude plugin install quack@quack
 
 # 4. Bind each workspace (repeat per workspace).
 cd <your-workspace>
@@ -34,8 +34,8 @@ running the server-only path (no plugin, hooks wired via your own
 ## Deployment
 
 > **Audience:** server operators running the Docker stack. End users should
-> follow the plugin install path above instead — `claude marketplace add ./`
-> + `/plugin install quack` wraps every step in this section.
+> follow the plugin install path above instead — `claude plugin marketplace add ./`
+> + `claude plugin install quack@quack` wraps every step in this section.
 
 Quack ships as a Docker Compose stack. Compose v2 (the `docker compose` CLI
 plugin) is required — Compose v1 (`docker-compose` binary) is not supported.
