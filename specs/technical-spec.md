@@ -39,6 +39,34 @@ src/
 └── shared/                 # types, env config, logger (strips Authorization on write)
 ```
 
+### Plugin packaging (M4+)
+
+The repo doubles as a Claude Code plugin marketplace. Layout addition:
+
+```
+.claude-plugin/
+└── marketplace.json        # declares the Quack plugin; source: ./plugins/quack/
+plugins/
+└── quack/
+    ├── .claude-plugin/
+    │   └── plugin.json     # plugin manifest (name, version, description, etc.)
+    ├── hooks/
+    │   ├── session_start.sh    # thin shell wrappers around the M3 quack-hook binary
+    │   ├── stop.sh
+    │   └── post_tool_use.sh
+    ├── mcp-servers/
+    │   └── quack.json      # MCP server declaration with ${QUACK_TOKEN} + ${QUACK_SERVER_URL} substitution
+    ├── commands/
+    │   └── quack-install.md   # /quack:install <slug> slash command
+    └── README.md
+```
+
+When a user installs the plugin from the marketplace, **only `plugins/quack/` is downloaded** — the rest of the repo (`src/`, `compose.yml`, `Dockerfile`, `specs/`, `tests/`, `package.json`, etc.) stays out of the install. The plugin is a packaging convenience; the server is the source of truth.
+
+Hooks are **thin shell scripts that exec the `quack-hook` binary** (built per FR-S2D0Z5 `bun run build:hook` + installed on PATH). The plugin doesn't ship a binary — keeps the install tiny and avoids platform-specific binary packaging. If `quack-hook` is not on PATH, hook scripts exit 0 silently with a one-line stderr hint.
+
+The MCP server config uses env-var substitution: `${QUACK_SERVER_URL}` defaults to `http://127.0.0.1:7474`; `${QUACK_TOKEN}` has no default (absence ⇒ MCP connection fails loudly, prompting the user to `/quack:install <slug>` for the workspace). Per-workspace config lives in `.envrc` (or similar) sourced by direnv / mise / manual `source`.
+
 ### Key Design Decisions
 
 | Decision | Choice | Rationale |
@@ -297,6 +325,7 @@ See `specs/testing-spec.md`. Boundary modules (auth middleware, `<memory>` wrap,
 | Read-path synthesis split | Dumb server (caller synthesizes) / NL→Cypher only / full RAG / hybrid | Dumb server | Caller is a SOTA LLM already; avoid duplicating; smallest prompt-injection-laundering surface. Server-side LLM in the read path is a future *security milestone*, not a retrieval upgrade. |
 | Memory MCP shape | Single `search_memory(query)` + `hint` / four primitive tools (`search_memory`, `get_neighbors`, `path_between`, `recent_decisions`) | Four primitives | Templates can't handle expressive multi-hop queries; the caller composes walks via primitives. Mandatory `meta` envelope on every response. Decided post duck-council review during `/brainstorm`. |
 | v1 graph schema | Hand-written fixed taxonomy / cheap-model-inferred / hybrid with `:Extension` namespace | Hand-written fixed (5 nodes, 5 relations) | Predictable graph shape; templates can rely on stable labels; extension labels are a future FR. |
+| Plugin distribution (M4) | Ship-only-binary (no plugin) / plugin-with-binary-included / plugin-with-thin-shells-around-binary / hosted-SaaS | Plugin-with-thin-shells | Marketplace is a packaging convenience; the binary stays the canonical client logic; platform-portable; smallest plugin footprint (~3-line shell scripts); the binary install remains a one-time per-machine step the README documents. |
 | MCP server session model | Stateful (persistent McpServer + transport, `sessionIdGenerator` set) vs Stateless (fresh McpServer + transport per request) | Stateless | The `WebStandardStreamableHTTPServerTransport` refuses to be reused across requests in stateless mode by design; per-request rebuild keeps the surface trivially correct under Bun's request-per-handler model. McpServer build is just closure registration (microseconds); SQLite work dominates request latency. Revisit if SDK adds reusable stateless transports OR if p95 latency under load grows uncomfortable. |
 | MCP arg validation | SDK `inputSchema` (yields JSON-RPC -32602 InvalidParams) vs hand-rolled zod inside the handler (yields MCP tool-error `invalid_args` with full issue path) | Hand-rolled in handler | AC-WSFVNP.10 literally mandates `invalid_args` as the error code surface. Calling `schema.safeParse(args)` inside `wrap()` lets us emit the contract-specified shape AND guarantees no DB call happens on validation failure. |
 | Bind address (dev vs Docker) | Always `127.0.0.1` (matches AC-HA2WTQ.5 literally; breaks Docker because the container's port mapping cannot forward to the container's loopback) vs configurable via `QUACK_BIND_HOST` env, default `127.0.0.1`, Docker image sets `0.0.0.0` | Configurable env, allowlisted to `{127.0.0.1, 0.0.0.0}` | The loopback-only intent of AC-HA2WTQ.5 (no LAN exposure) is satisfied two different ways depending on runtime: in dev the in-process bind is loopback; in Docker the bind is any-interface inside the container, and the loopback-only guarantee is enforced by compose.yml's `127.0.0.1:7474:7474` host-side mapping (AC-BKPM28.4). The allowlist prevents accidental LAN exposure via a typo. Discovered during M2 docker-compose smoke; documented here as the canonical resolution of the two ACs. |
