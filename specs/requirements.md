@@ -110,3 +110,44 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-BKPM28.3 (.env.example) | `.env.example` | `tests/compose-config.test.ts` |
 | AC-BKPM28.5 (README deployment) | `README.md` | `tests/compose-config.test.ts` |
 | AC-BKPM28.6 (`docker compose up` healthy in 30 s) | `Dockerfile`, `compose.yml` | `tests/docker-run.test.ts` (skipped when daemon absent) |
+| AC-SFQDXR.1 (graphdb compose service, no profile gate) | `compose.yml` | `tests/compose-config.test.ts` |
+| AC-SFQDXR.2 (Neo4j env vars) | `src/shared/env.ts`, `.env.example` | `src/shared/env.test.ts`, `tests/compose-config.test.ts` |
+| AC-SFQDXR.3 (getDriver singleton + signal lifecycle) | `src/graph/driver.ts` | `src/graph/driver.test.ts` |
+| AC-SFQDXR.4 (GraphAdapter + Neo4jGraphAdapter + project_id override) | `src/graph/adapter.ts`, `src/graph/types.ts` | `src/graph/adapter.test.ts` |
+| AC-SFQDXR.5 (template registry + validateTemplateRegistry) | `src/graph/templates/index.ts`, `src/graph/errors.ts` | `src/graph/templates/index.test.ts` |
+| AC-SFQDXR.6 (v1 index DDL + idempotent migrations) | `src/graph/migrations.ts` | `src/graph/migrations.test.ts` |
+| AC-SFQDXR.7 (/health graphdb probe) | `src/server/index.ts`, `src/graph/driver.ts` | `src/server/index.test.ts` |
+| AC-SFQDXR.8 (import-fence: neo4j-driver outside src/graph/) | `tests/graph-import-fence.test.ts` | `tests/graph-import-fence.test.ts` |
+| AC-SFQDXR.9 (adapter integration vs real Neo4j) | `src/graph/adapter.ts` | `src/graph/adapter.test.ts` (skipped when docker absent) |
+| AC-SFQDXR.10 (server_status.counts.graphdb + db_error) | `src/admin/tools/server_status.ts`, `src/admin/tools/_graphdb_status.ts` | `src/admin/tools/server_status.test.ts` |
+| AC-DPY5GQ.1–4 (search/get_neighbors/path/recent_decisions tools) | `src/mcp/tools/memory/{search_memory,get_neighbors,path_between,recent_decisions}.ts`, `src/graph/templates/memory/*.ts` | per-tool tests under `src/mcp/tools/memory/` |
+| AC-DPY5GQ.5–6 (meta envelope + `<memory>` wrap) | `src/mcp/memory/{coverage,dto}.ts` | `src/mcp/memory/{coverage,dto}.test.ts` |
+| AC-DPY5GQ.7 (cross-tenant isolation) | `src/graph/templates/memory/*.ts` | `src/mcp/tools/memory/cross_tenant.test.ts` (skipped when docker absent) |
+| AC-DPY5GQ.8 (`mode: "planned"` reservation → not_implemented_yet) | `src/mcp/tools/memory/_shared.ts`, `src/mcp/errors.ts` | per-tool tests |
+| AC-DPY5GQ.9–10 (Zod refusal → invalid_args; member-readable) | `src/mcp/server.ts` (wrapMemory) | `src/mcp/server.test.ts`, per-tool tests |
+| AC-DPY5GQ.11 (manifest description `<memory>` clause) | `src/mcp/server.ts` (MEMORY_CLAUSE) | `src/mcp/server.test.ts` |
+| AC-DPY5GQ.12 (memory-tool perf p95) | `src/mcp/tools/memory/*` | deferred — bench coverage gap flagged in M3 closeout |
+| AC-4NY6S1.1–2 (HookEnvelope validation + 202 backpressure) | `src/ingest/handler.ts` | `src/ingest/handler.test.ts` |
+| AC-4NY6S1.3 (typed FIFO ring buffer) | `src/extract/queue.ts` | `src/extract/queue.test.ts` |
+| AC-4NY6S1.4 (consumer concurrency cap + graceful drain) | `src/extract/consumer.ts` | `src/extract/consumer.test.ts` |
+| AC-4NY6S1.5 (redaction pass + shared patterns) | `src/extract/redact.ts`, `src/shared/redaction_patterns.ts` | `src/extract/redact.test.ts` |
+| AC-4NY6S1.6–8 (cheap-model client + Zod + canonicalize) | `src/extract/{client,prompt,canonicalize}.ts` | `src/extract/{client,prompt,canonicalize}.test.ts` |
+| AC-4NY6S1.9 (six MERGE templates) | `src/graph/templates/extract/*.ts` | `src/extract/pipeline.test.ts` |
+| AC-4NY6S1.10 (counter integration → server_status) | `src/metrics/counters.ts` | `src/extract/consumer.test.ts`, `src/admin/tools/server_status.test.ts` |
+| AC-4NY6S1.11 (dead-letter JSONL + rotation) | `src/extract/dead_letter.ts` | `src/extract/dead_letter.test.ts` |
+| AC-4NY6S1.12–13 (cross-tenant + project_slug 403) | `src/extract/writer.ts`, `src/ingest/handler.ts` | `src/extract/pipeline.test.ts`, `src/ingest/handler.test.ts` |
+| AC-4NY6S1.14 (e2e pipeline) | `src/extract/{consumer,writer}.ts` | `src/extract/pipeline.test.ts` (skipped when docker absent) |
+| AC-EDXH3X.1 (delete_project ref = project_id + slug→id migration) | `src/admin/tools/delete_project.ts`, `src/auth/sqlite/schema.ts` | `src/admin/tools/delete_project.test.ts`, `src/auth/sqlite/schema.test.ts` |
+| AC-EDXH3X.2–4 (sweeper scheduler + drain + fail_count) | `src/extract/cleanup_sweeper.ts`, `src/graph/templates/cleanup/drop_project_batch.ts` | `src/extract/cleanup_sweeper.test.ts` |
+| AC-EDXH3X.5–6 (run_cleanup_now + cleanup_status admin tools) | `src/admin/tools/{run_cleanup_now,cleanup_status}.ts`, `src/admin/index.ts` | `src/admin/tools/{run_cleanup_now,cleanup_status}.test.ts` |
+| AC-EDXH3X.7 (counters + server_status cleanup block) | `src/admin/tools/server_status.ts`, `src/metrics/counters.ts` | `src/admin/tools/server_status.test.ts` |
+| AC-EDXH3X.8 (project_id reuse not a concern) | n/a — design property of SQLite INTEGER PRIMARY KEY | covered by `src/extract/cleanup.test.ts` |
+| AC-EDXH3X.9–10 (e2e delete-then-sweep + cross-tenant) | `src/extract/cleanup_sweeper.ts`, `src/graph/templates/cleanup/*` | `src/extract/cleanup.test.ts` (skipped when docker absent) |
+| AC-EDXH3X.11 (fail_count column + stuck-row backoff) | `src/auth/sqlite/schema.ts`, `src/extract/cleanup_sweeper.ts` | `src/auth/sqlite/schema.test.ts`, `src/extract/cleanup_sweeper.test.ts` |
+| AC-S2D0Z5.1–3 (single-binary build + argv dispatch + stdin) | `src/hooks/quack-hook.ts`, `package.json` (`build:hook`) | `src/hooks/quack-hook.test.ts`, `tests/hook-binary.test.ts` |
+| AC-S2D0Z5.4–5 (envelope POST + fire-and-forget timeout) | `src/hooks/{dispatch,post}.ts` | `src/hooks/{dispatch,post}.test.ts` |
+| AC-S2D0Z5.6 (client-side redaction shared with server) | `src/hooks/redact.ts`, `src/shared/redaction_patterns.ts` | `src/hooks/redact.test.ts` |
+| AC-S2D0Z5.7–8 (config resolution + init subcommand) | `src/hooks/{config,init}.ts` | `src/hooks/{config,init}.test.ts` |
+| AC-S2D0Z5.9 (README hooks section) | `README.md` | manual review + `tests/compose-config.test.ts` |
+| AC-S2D0Z5.10–12 (perf + integration test) | `src/hooks/*` | `tests/hook-binary.test.ts` (skipped when build fails) |
+| AC-S2D0Z5.13 (.dockerignore excludes dist/) | `.dockerignore` | `tests/compose-config.test.ts` |
