@@ -1,8 +1,8 @@
 ---
 title: Memory-plane MCP tools (4 primitives + meta envelope)
 milestone: M3
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-13T10:19:36Z
 id: fr_01KRFZE18F27035A35DCDPY5GQ
 created_at: 2026-05-13T10:00:00Z
 ---

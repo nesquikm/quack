@@ -1,8 +1,8 @@
 ---
 title: GraphAdapter interface + Neo4j Community wiring
 milestone: M3
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-13T10:19:36Z
 id: fr_01KRFZE18CHWNRXHQCYJSFQDXR
 created_at: 2026-05-13T10:00:00Z
 ---
