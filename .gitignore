@@ -7,3 +7,5 @@ dist/
 .DS_Store
 .bun/
 coverage/
+# Bun --compile build cache artifacts (transient).
+.*.bun-build

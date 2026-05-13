@@ -12,3 +12,5 @@ tests/
 data/
 .dpt-locks/
 coverage/
+# quack-hook is a client-side artifact, not part of the server image.
+dist/
