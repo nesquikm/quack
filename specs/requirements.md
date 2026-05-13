@@ -15,6 +15,8 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 - **Auth scheme:** Both external surfaces (HTTP `POST /ingest`, HTTP MCP at `/mcp`) authenticate via `Authorization: Bearer <token>`. Each token is opaque (32 random bytes, base64url-encoded) and bound to exactly one `(user_id, project_id)` pair. Tokens are stored hashed (SHA-256) at rest; the plaintext is shown to the operator exactly once at issuance and never retrievable thereafter. Missing or invalid token ⇒ HTTP 401 from both endpoints uniformly.
 - **Bootstrap admin:** Server reads `QUACK_BOOTSTRAP_TOKEN` on startup. On first boot with an empty `users` table, that token mints an admin row (role = `admin`) with an implicit "control plane" project membership that grants access to management tools. Subsequent boots ignore the env var when an admin already exists. Absence of `QUACK_BOOTSTRAP_TOKEN` on first boot ⇒ refuse to start.
 - **Tenancy model:** Multi-tenant. Every memory write and read is scoped by the `project_id` resolved from the request's token; the graph DB is partitioned per project. A token for `(user_a, project_x)` MUST NOT read or write any data in `project_y`. Cross-project queries are not exposed at the API or MCP boundary in v1.
+- **Graph engine (M3+):** Neo4j Community Edition 5.x runs as a separate `graphdb` Compose service. Per-project tenancy is implemented via an indexed `project_id` property on every memory-plane node. `GraphAdapter` exposes **only strictly parameterized template runners** (`run(templateId, params, ctx)`) — `project_id` is a non-negotiable bind parameter in every template; no raw-Cypher pass-through; no string-built `WHERE` injection. Templates are the security boundary, not just a product surface.
+- **Memory-plane MCP surface (M3+):** Retrieval is exposed as **four primitive MCP tools**, all member-or-admin readable, all returning **structured DTOs only — never prose**: `search_memory`, `get_neighbors`, `path_between`, `recent_decisions`. Every response carries a mandatory `meta` envelope (`{ mode_used, coverage, warnings, explain? }`) so the caller can detect weak retrievals. The query-planning role lives with the caller (Claude Code); Quack is the dumb-server end of the split. Results are wrapped in `<memory>…</memory>` at the MCP boundary and surfaced as untrusted text.
 - **Project membership:** A project can have multiple users; a user can belong to multiple projects. Membership is tracked in `auth.sqlite` `project_members(user_id, project_id, role)`. Admin-only MCP tools (`add_member`, `remove_member`) manage the table. Removing a member revokes their token(s) for that project but does not affect their access to other projects.
 - **Management surface:** User and project lifecycle is managed via MCP tools, not a web UI or separate REST endpoints. The tools (`register_user`, `remove_user`, `create_project`, `delete_project`, `add_member`, `remove_member`, `revoke_token`, `list_projects`, `list_users`) are exposed by the same MCP server, gated to admin tokens. Non-admin tokens calling a management tool ⇒ HTTP 403.
 - **Cheap-model API access:** The server reads `QUACK_MODEL_API_KEY` (secret bearer for the OpenAI-compatible endpoint) and `QUACK_MODEL_BASE_URL` (e.g., `https://api.anthropic.com/v1`, `https://api.openai.com/v1`, `http://localhost:11434/v1`) at startup. These are **server-wide** — all projects share the same model account / billing. The key is read from environment only, never persisted to `auth.sqlite` and never written to logs. Both vars are *optional in M2* (extractor is not yet wired) and *required from M3* (first extractor call). Per-project override is out of scope in v1 and may be added additively later.
@@ -38,6 +40,7 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 - Redaction policy applied to outbound hook payloads.
 - Tokens hashed at rest (SHA-256); plaintext shown once at issuance only.
 - `QUACK_MODEL_API_KEY` never logged; redacted by the same logger pass that strips `Authorization:` headers. Rotation = restart with new env value.
+- Dynamic Cypher / NL→Cypher is reserved for a future **security milestone** (not a v1 retrieval upgrade). It MUST NOT ship until per-project isolation is re-architected (separate Neo4j databases on Enterprise, or hard query sandboxing on Community). Templates are the v1 isolation mechanism; bypassing them bypasses tenancy.
 
 ### NFR-3: Availability
 - Personal/team-tool scope — no formal SLO. The system MUST fail open from Claude Code's perspective: ingest server unreachable ⇒ hooks drop silently, never block.
@@ -61,17 +64,20 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | Token theft from logs | Server logs `Authorization` header verbatim | Bearer-stripping middleware on log writer; explicit unit test that no log line contains the token |
 | Model API key leakage | `QUACK_MODEL_API_KEY` echoed in logs or error responses | Same logger redaction pass strips the parsed env value; never include in error bodies; documented `docker secrets` for prod deployments |
 | Server reachable from untrusted network | Misconfigured port mapping exposes container externally | Default bind to `127.0.0.1`; documented as opt-in to expose; ops responsibility for reverse-proxy hardening |
+| NL→Cypher escape from tenancy | Future LLM-generated Cypher emits a query that bypasses the `project_id` filter | No dynamic Cypher in v1 — `GraphAdapter` exposes only bounded server-owned parameterized templates; raw `session.run()` is forbidden at the type / lint level. Dynamic Cypher gated behind a future security milestone (separate DBs or hard sandboxing). |
 
 ## 5. Out of Scope (v1)
 
 - Hybrid vector + graph retrieval (graph only; revisit after retrieval quality measured)
 - Consolidation / "dreams" loop (periodic merge pass)
 - Decay / TTL on stored memories
-- MCP tools beyond `search_memory` for memory retrieval (`recall_entity`, `related_to`, `recent_decisions` — additive after v1)
+- Server-side natural-language answer synthesis — Quack returns structured DTOs only; Claude Code (the caller) synthesizes. No `mode: "llm"` ever returns prose from MCP tools.
+- Dynamic Cypher / NL→Cypher in the read path — security milestone; reserved until per-project isolation is re-architected.
 - Web UI for user/project management (CLI-via-MCP is the only surface in v1)
 - Token rotation flow (revoke + reissue is the only path in v1)
 - OAuth / OIDC / external identity provider integration
 - In-place admin token rotation (restart-based only in v1)
+- Per-project cheap-model API keys (server-wide key only in v1)
 
 ## 6. Traceability Matrix
 
