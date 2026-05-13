@@ -8,6 +8,8 @@ export const ADMIN_TOOLS = new Set<string>([
   "revoke_token",
   "list_users",
   "server_status",
+  "run_cleanup_now",
+  "cleanup_status",
 ]);
 
 export const CONTROL_PROJECT_SLUG = "_control_";

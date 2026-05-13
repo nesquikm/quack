@@ -14,6 +14,9 @@ import { validateTemplateRegistry } from "../graph/templates/index";
 import { Neo4jGraphAdapter, type GraphAdapter } from "../graph/adapter";
 import { registerExtractTemplates } from "../graph/templates/extract/index";
 import { registerMemoryTemplates } from "../graph/templates/memory/index";
+import { registerCleanupTemplates } from "../graph/templates/cleanup/index";
+import { createSweeper, type Sweeper } from "../extract/cleanup_sweeper";
+import { setSweeper } from "../admin/tools/_cleanup_holder";
 import { BoundedQueue } from "../extract/queue";
 import { createRedactor } from "../extract/redact";
 import { createExtractionClient } from "../extract/client";
@@ -121,6 +124,7 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
     // Idempotent — multiple startServer calls (tests) don't double-register.
     registerMemoryTemplates();
     registerExtractTemplates();
+    registerCleanupTemplates();
     validateTemplateRegistry();
     graphDriver = getDriver(env);
     graph = new Neo4jGraphAdapter(graphDriver);
@@ -177,6 +181,18 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
     } else {
       logger.info("extractor.disabled", { reason: "QUACK_MODEL_API_KEY or QUACK_MODEL_BASE_URL unset" });
     }
+
+    // Cleanup sweeper — runs regardless of extractor wiring so deletes can
+    // drain even when the extractor is disabled. Manual mode for tests; the
+    // initial-delay scheduler is fine in production.
+    const sweeper: Sweeper = createSweeper({ db, adapter: graph });
+    setSweeper(sweeper);
+    const stopSweeper = async () => {
+      try { await sweeper.stop(); } catch { /* best effort */ }
+      setSweeper(null);
+    };
+    process.once("SIGTERM", stopSweeper);
+    process.once("SIGINT", stopSweeper);
   }
   // Reference queueIncrement so the import isn't a TS unused warning while
   // we wire up the ingest handler's per-request hook elsewhere.

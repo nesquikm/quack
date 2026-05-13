@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import type { AuthContext } from "../../auth/middleware";
 import { getSnapshot, getStartedAt } from "../../metrics/counters";
 import { getGraphdbStatus } from "./_graphdb_status";
+import { getSweeper } from "./_cleanup_holder";
 import packageJson from "../../../package.json" with { type: "json" };
 
 const SERVER_VERSION = (packageJson as { version: string }).version;
@@ -28,6 +29,11 @@ export interface ServerStatusResponse {
     tokens_active: number;
     server_version: string;
     graphdb: { status: "ok" | "down"; indexes: number };
+  };
+  cleanup: {
+    last_run_at: string | null;
+    pending_rows: number;
+    currently_running: boolean;
   };
 }
 
@@ -55,5 +61,20 @@ export function serverStatus(
       server_version: SERVER_VERSION,
       graphdb: getGraphdbStatus(),
     },
+    cleanup: buildCleanupBlock(db),
+  };
+}
+
+function buildCleanupBlock(db: Database) {
+  const sweeper = getSweeper();
+  const pending = db
+    .query<{ c: number }, []>(
+      `SELECT COUNT(*) as c FROM pending_cleanup WHERE kind = 'project_graph_partition'`,
+    )
+    .get();
+  return {
+    last_run_at: sweeper ? sweeper.state().last_run_at : null,
+    pending_rows: pending?.c ?? 0,
+    currently_running: sweeper ? sweeper.state().currently_running : false,
   };
 }

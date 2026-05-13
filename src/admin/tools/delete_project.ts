@@ -31,9 +31,13 @@ export function deleteProject(
   let cleanupId = 0;
   db.transaction(() => {
     db.run("DELETE FROM projects WHERE id = ?", [project.id]);
+    // FR-EDXH3X AC.1: pending_cleanup.ref carries the integer project_id as
+    // a string. The slug can't be looked up after the FK cascade above
+    // deletes the row; the integer is the only stable handle to the
+    // orphaned graph partition.
     const insert = db.run(
       "INSERT INTO pending_cleanup(kind, ref) VALUES ('project_graph_partition', ?)",
-      [args.slug],
+      [String(project.id)],
     );
     cleanupId = Number(insert.lastInsertRowid);
   })();

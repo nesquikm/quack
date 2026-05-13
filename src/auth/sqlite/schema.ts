@@ -60,6 +60,38 @@ export function runMigrations(db: Database): void {
       }
       db.run("INSERT INTO _migrations(version) VALUES (1)");
     }
+    // v2 (FR-EDXH3X): add fail_count column to pending_cleanup; translate
+    // pre-M3 slug-based refs into project_id (numeric); drop orphan rows
+    // whose project no longer exists. Idempotent — guarded by _migrations.
+    const v2 = db
+      .query<{ c: number }, []>("SELECT COUNT(*) as c FROM _migrations WHERE version = 2")
+      .get();
+    if ((v2?.c ?? 0) === 0) {
+      // ADD COLUMN — SQLite tolerates a redundant attempt only if we guard
+      // with PRAGMA table_info; check first.
+      const cols = db
+        .query<{ name: string }, []>("PRAGMA table_info(pending_cleanup)")
+        .all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === "fail_count")) {
+        db.run("ALTER TABLE pending_cleanup ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0");
+      }
+      // Translate non-numeric refs (slugs) → project_id where the project
+      // still exists. The slug index keeps the lookup cheap.
+      db.run(
+        `UPDATE pending_cleanup
+         SET ref = (SELECT CAST(p.id AS TEXT) FROM projects p WHERE p.slug = pending_cleanup.ref)
+         WHERE kind = 'project_graph_partition'
+           AND ref NOT GLOB '[0-9]*'
+           AND ref IN (SELECT slug FROM projects)`,
+      );
+      // Drop refs that didn't resolve — the project is gone, the graph data
+      // is orphaned beyond rescue, and the row would block the sweeper.
+      db.run(
+        `DELETE FROM pending_cleanup
+         WHERE kind = 'project_graph_partition' AND ref NOT GLOB '[0-9]*'`,
+      );
+      db.run("INSERT INTO _migrations(version) VALUES (2)");
+    }
   })();
 }
 

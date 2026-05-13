@@ -100,4 +100,22 @@ describe("serverStatus", () => {
     const snap = serverStatus({}, adminCtx, db);
     expect(snap.errors.by_category["db_error"]).toBe(1);
   });
+
+  test("cleanup block defaults to zero pending_rows + null last_run + not running", () => {
+    const db = seededDb();
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.cleanup).toEqual({
+      last_run_at: null,
+      pending_rows: 0,
+      currently_running: false,
+    });
+  });
+
+  test("cleanup.pending_rows reflects pending_cleanup row count", () => {
+    const db = seededDb();
+    db.run("INSERT INTO pending_cleanup(kind, ref) VALUES ('project_graph_partition', '1000')");
+    db.run("INSERT INTO pending_cleanup(kind, ref) VALUES ('project_graph_partition', '2000')");
+    const snap = serverStatus({}, adminCtx, db);
+    expect(snap.cleanup.pending_rows).toBe(2);
+  });
 });

@@ -16,18 +16,23 @@ function seededDb(): Database {
 }
 
 describe("deleteProject", () => {
-  test("happy path: deletes project and queues pending_cleanup", () => {
+  test("happy path: deletes project and queues pending_cleanup with numeric ref (project_id)", () => {
     const db = seededDb();
-    createProject({ slug: "tempproj", display_name: "Temp" }, adminCtx, db);
+    const created = createProject({ slug: "tempproj", display_name: "Temp" }, adminCtx, db);
     const res = deleteProject({ slug: "tempproj" }, adminCtx, db);
     expect(res.deleted).toBe(true);
     expect(typeof res.cleanup_queued).toBe("number");
 
     const projectRow = db.query<{ c: number }, [string]>("SELECT COUNT(*) as c FROM projects WHERE slug = ?").get("tempproj");
     expect(projectRow?.c).toBe(0);
-    const cleanup = db.query<{ kind: string; ref: string }, []>("SELECT kind, ref FROM pending_cleanup").get();
+    const cleanup = db.query<{ kind: string; ref: string; fail_count: number }, []>(
+      "SELECT kind, ref, fail_count FROM pending_cleanup",
+    ).get();
     expect(cleanup?.kind).toBe("project_graph_partition");
-    expect(cleanup?.ref).toBe("tempproj");
+    // FR-EDXH3X AC.1: ref is the integer project_id as a string.
+    expect(cleanup?.ref).toBe(String(created.project.id));
+    expect(/^[0-9]+$/.test(cleanup?.ref ?? "")).toBe(true);
+    expect(cleanup?.fail_count).toBe(0);
   });
 
   test("refuses to delete _control_", () => {

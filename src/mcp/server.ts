@@ -22,6 +22,8 @@ import { revokeToken, revokeTokenSchema } from "../admin/tools/revoke_token";
 import { listProjects, listProjectsSchema } from "../admin/tools/list_projects";
 import { listUsers, listUsersSchema } from "../admin/tools/list_users";
 import { serverStatus, serverStatusSchema } from "../admin/tools/server_status";
+import { runCleanupNow, runCleanupNowSchema } from "../admin/tools/run_cleanup_now";
+import { cleanupStatus, cleanupStatusSchema } from "../admin/tools/cleanup_status";
 import { searchMemory, searchMemorySchema } from "./tools/memory/search_memory";
 import { getNeighbors, getNeighborsSchema } from "./tools/memory/get_neighbors";
 import { pathBetween, pathBetweenSchema } from "./tools/memory/path_between";
@@ -94,6 +96,45 @@ function wrap<A>(
     }
     try {
       return ok(handler(parsed.data, ctx, db));
+    } catch (err) {
+      if (err instanceof AdminToolError) return errResult(err.code, 400);
+      throw err;
+    }
+  };
+}
+
+// Async admin-tool wrapper — like wrap() but awaits the handler. Required
+// because some admin tools (run_cleanup_now) talk to a long-running sweeper.
+function wrapAsync<A>(
+  name: string,
+  schema: z.ZodType<A>,
+  handler: (args: A, ctx: AuthContext, db: Database) => Promise<unknown>,
+): (args: unknown, extra: unknown) => Promise<CallToolResult> {
+  return async (args, extra) => {
+    const { ctx, db } = extractContext(extra);
+    try {
+      applyAdminGate(name, ctx);
+    } catch (err) {
+      if (err instanceof ForbiddenError) return errResult("forbidden", 403);
+      throw err;
+    }
+    const parsed = schema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: "invalid_args",
+              issues: parsed.error.issues.map((i) => ({ path: i.path, message: i.message })),
+            }),
+          },
+        ],
+      };
+    }
+    try {
+      return ok(await handler(parsed.data, ctx, db));
     } catch (err) {
       if (err instanceof AdminToolError) return errResult(err.code, 400);
       throw err;
@@ -231,6 +272,16 @@ export function buildMcpServer(): McpServer {
     "Admin-only. Snapshot only — no streaming, no history. Returns uptime, queue stats (null in M2), error counts, and seeded counts.",
     wrap("server_status", serverStatusSchema, serverStatus as ToolHandler<Record<string, never>>),
   );
+  reg(
+    "run_cleanup_now",
+    "Admin-only. Triggers an immediate sweep of pending_cleanup rows. Refuses with sweep_in_progress if a sweep is already running.",
+    wrapAsync("run_cleanup_now", runCleanupNowSchema, runCleanupNow as (a: unknown, c: AuthContext, d: Database) => Promise<unknown>),
+  );
+  reg(
+    "cleanup_status",
+    "Admin-only. Returns pending_rows / stuck_rows / last_run / currently_running for the cleanup sweeper.",
+    wrap("cleanup_status", cleanupStatusSchema, cleanupStatus as ToolHandler<Record<string, never>>),
+  );
 
   // Memory-plane tools (member or admin). Each description carries the
   // load-bearing AC-DPY5GQ.11 clause about <memory> wrapping + no streaming.
@@ -291,6 +342,7 @@ export function createMcpHandler(
 export function listTools(): string[] {
   return [
     "add_member",
+    "cleanup_status",
     "create_project",
     "delete_project",
     "get_neighbors",
@@ -302,6 +354,7 @@ export function listTools(): string[] {
     "remove_member",
     "remove_user",
     "revoke_token",
+    "run_cleanup_now",
     "search_memory",
     "server_status",
   ];
