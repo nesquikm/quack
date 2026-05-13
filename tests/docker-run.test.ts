@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { join } from "node:path";
+import { installComposeEnv } from "./_compose_env";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 
@@ -48,29 +49,37 @@ describe("docker run / compose smoke", () => {
       console.warn("docker not on PATH — skipping compose smoke test");
       return;
     }
-    const env = { ...process.env, QUACK_BOOTSTRAP_TOKEN: "compose-smoke-token" };
-    const up = Bun.spawn(["docker", "compose", "up", "-d", "--build"], {
-      cwd: REPO_ROOT,
-      env,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const upCode = await up.exited;
-    expect(upCode).toBe(0);
-
+    // compose.yml requires .env; install a test-owned one with a bootstrap token,
+    // restore on teardown.
+    const envHandle = installComposeEnv(REPO_ROOT, `QUACK_BOOTSTRAP_TOKEN=compose-smoke-token`);
     try {
-      const ok = await awaitHealth("http://127.0.0.1:7474/health", 30_000);
-      expect(ok).toBe(true);
-    } finally {
-      const down = Bun.spawn(["docker", "compose", "down", "--volumes"], {
+      const up = Bun.spawn(["docker", "compose", "up", "-d", "--build"], {
         cwd: REPO_ROOT,
         stdout: "pipe",
         stderr: "pipe",
       });
-      const downCode = await down.exited;
-      // Surface compose-down failures: a leaked container or volume between runs
-      // is a real bug and we don't want it masked by an unasserted teardown.
-      expect(downCode).toBe(0);
+      const upCode = await up.exited;
+      if (upCode !== 0) {
+        const stderr = await new Response(up.stderr).text();
+        throw new Error(`docker compose up failed (exit ${upCode}):\n${stderr}`);
+      }
+
+      try {
+        const ok = await awaitHealth("http://127.0.0.1:7474/health", 30_000);
+        expect(ok).toBe(true);
+      } finally {
+        const down = Bun.spawn(["docker", "compose", "down", "--volumes"], {
+          cwd: REPO_ROOT,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const downCode = await down.exited;
+        // Surface compose-down failures: a leaked container or volume between runs
+        // is a real bug and we don't want it masked by an unasserted teardown.
+        expect(downCode).toBe(0);
+      }
+    } finally {
+      envHandle.restore();
     }
-  }, 120_000);
+  }, 240_000);
 });

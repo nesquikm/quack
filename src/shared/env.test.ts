@@ -9,12 +9,14 @@ describe("parseEnv", () => {
       QUACK_DATA_DIR: "/custom/data",
       QUACK_MODEL_API_KEY: "sk-test",
       QUACK_MODEL_BASE_URL: "https://api.anthropic.com/v1",
+      QUACK_BIND_HOST: "0.0.0.0",
     });
     expect(env.PORT).toBe(8080);
     expect(env.QUACK_BOOTSTRAP_TOKEN).toBe("bootstrap-abc");
     expect(env.QUACK_DATA_DIR).toBe("/custom/data");
     expect(env.QUACK_MODEL_API_KEY).toBe("sk-test");
     expect(env.QUACK_MODEL_BASE_URL).toBe("https://api.anthropic.com/v1");
+    expect(env.QUACK_BIND_HOST).toBe("0.0.0.0");
   });
 
   test("defaults apply when vars are absent", () => {
@@ -24,6 +26,12 @@ describe("parseEnv", () => {
     expect(env.QUACK_BOOTSTRAP_TOKEN).toBeUndefined();
     expect(env.QUACK_MODEL_API_KEY).toBeUndefined();
     expect(env.QUACK_MODEL_BASE_URL).toBeUndefined();
+    expect(env.QUACK_BIND_HOST).toBe("127.0.0.1");
+  });
+
+  test("QUACK_BIND_HOST rejects values outside the allowlist", () => {
+    expect(() => parseEnv({ QUACK_BIND_HOST: "192.168.1.1" })).toThrow(EnvError);
+    expect(() => parseEnv({ QUACK_BIND_HOST: "::1" })).toThrow(EnvError);
   });
 
   test("missing-var case 1: invalid PORT (non-numeric) throws", () => {

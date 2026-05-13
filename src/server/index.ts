@@ -11,7 +11,6 @@ import { Logger, createBufferLogger } from "../shared/logger";
 import packageJson from "../../package.json" with { type: "json" };
 
 export const SERVER_VERSION = (packageJson as { version: string }).version;
-const LOOPBACK_HOST = "127.0.0.1";
 
 export type McpHandlerFn = (
   request: Request,
@@ -77,11 +76,11 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
   const fetch = buildFetch({ db, logger, mcpHandler: options.mcpHandler });
 
   const server = Bun.serve({
-    hostname: LOOPBACK_HOST,
+    hostname: env.QUACK_BIND_HOST,
     port: env.PORT,
     fetch,
   });
 
-  logger.info("server.started", { port: env.PORT, host: LOOPBACK_HOST, version: SERVER_VERSION });
+  logger.info("server.started", { port: env.PORT, host: env.QUACK_BIND_HOST, version: SERVER_VERSION });
   return { server, db, logger };
 }

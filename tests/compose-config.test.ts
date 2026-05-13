@@ -77,8 +77,9 @@ describe("Dockerfile shape", () => {
     expect(df).toContain("EXPOSE 7474");
     expect(df).toContain('CMD ["bun", "run", "src/index.ts"]');
     expect(df).toContain("WORKDIR /app");
-    expect(df).toContain("USER quack");
-    expect(df).toMatch(/-u\s*1000/);
+    // Non-root user: the oven/bun:alpine base ships a `bun` user at uid 1000;
+    // the Dockerfile reuses it instead of creating a duplicate.
+    expect(df).toContain("USER bun");
   });
 });
 

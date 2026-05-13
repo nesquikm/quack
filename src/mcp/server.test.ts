@@ -17,6 +17,7 @@ async function startTestServer() {
       QUACK_DATA_DIR: dir,
       QUACK_MODEL_API_KEY: undefined,
       QUACK_MODEL_BASE_URL: undefined,
+      QUACK_BIND_HOST: "127.0.0.1",
     },
     mcpHandler: handler,
   });
