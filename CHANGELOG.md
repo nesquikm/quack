@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-14 — "Quill"
+
+### Added
+
+- **FR-41NXTZ** — `add_memory({ content })` MCP tool: member-readable; routes free-form content through the existing FR-4NY6S1 extraction pipeline. Content is wrapped in a synthetic `HookEnvelope` with `kind: "explicit_add"`, validated, redacted (same defense-in-depth pattern set as hooks), then enqueued via the same `BoundedQueue` as `POST /ingest`. The extraction prompt template gains a kind-aware branch that frames `payload.content` as a "user-asserted fact"; the `ExtractionResult` schema (node/relation types) is unchanged. Returns `{ accepted: true, queued_at }` on success or `{ accepted: false, reason: "queue_full", queued_at: null }` on backpressure — fire-and-forget; the caller verifies a memory landed via `search_memory` after a short delay, identical to the hook contract. New env var `QUACK_ADD_MEMORY_MAX_BYTES` (Zod, default 32768) caps content length; a narrow env reader (`getAddMemoryMaxBytes`) lets unit tests import the module without a fully-populated env. Info-level `explicit_add_received` counter surfaces in `server_status.errors.by_category` so operators can split add_memory-vs-hooks traffic. Cross-tenant isolation reused unchanged: extracted nodes carry `ctx.project_id`; the writer's model-supplied-`project_id` override defense applies. Production wiring: `StartServerOptions.mcpHandlerFactory` signature extended to `(graph, ingestQueue?)` so the MCP handler can reach the shared queue. NOT in `ADMIN_TOOLS` — member tokens succeed; missing/revoked tokens 401 at `AuthMiddleware` before tool dispatch. Manifest description is the verbatim AC.9 string so Claude Code's planning matches actual semantics. Tests: `add_memory.test.ts` (unit + MCP integration), `prompt.test.ts` extended (user-asserted-fact framing), `consumer.test.ts` extended (`payload.content` redacted before model call), `cross_tenant.test.ts` extended (docker), `pipeline.test.ts` extended (full e2e via mocked model, docker), `server_status.test.ts` extended (counter surface), `server.test.ts` wiring regression (factory threads the queue).
+
+Total test count at release: 346 tests, 0 failures, 0 errors.
+
 ## [0.2.1] — 2026-05-13 — "Hermes (hotfix)"
 
 ### Fixed
