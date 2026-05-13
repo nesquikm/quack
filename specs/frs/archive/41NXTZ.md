@@ -1,8 +1,8 @@
 ---
 title: add_memory MCP tool (LLM-digested writes to knowledge base)
 milestone: M5
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-13T16:46:07Z
 id: fr_01KRH0B3W2VFACRC113Z41NXTZ
 created_at: 2026-05-13T11:30:00Z
 ---
@@ -88,3 +88,9 @@ The entire FR is glue + a prompt branch. The heavy lifting (extraction, redactio
 - Future plugin command `/quack:remember <content>`: trivial — calls `add_memory({ content })` server-side; just a markdown file under `plugins/quack/commands/`. Defer to a small plugin-side FR after M5 ships.
 - Future per-project content-size override: would add a `project.add_memory_max_bytes` column to `auth.sqlite.projects` (or a settings JSON column). v1's single env var is fine.
 - Provenance / "what added this" question — explicitly out of scope. If it becomes important later, we can add a `request_id` property to extracted nodes without storing the request itself; `add_memory`'s response can include the request_id even though there's no status tool. Easy additive change.
+
+## Implementation notes
+
+- `no_ingest_queue` 503 defense-in-depth path in `src/mcp/server.ts` — defensive 503 return when `ingestQueue` is undefined. Unreachable in production after the AC.4 wiring fix (verified by the `mcp/server.test.ts` wiring regression test). Kept as defense-in-depth; not gate-blocking. Future reviewer: do not strip as dead code without a regression test still covering the wiring contract.
+- `incrementError("explicit_add_received")` routes an info-level traffic counter through the error counter store — inflates `errors.since_boot_total` by every successful `add_memory` call. Acknowledged in the Notes section above as a deliberate compromise pinned by FR-956DT2 AC.5; a future `server_status` v2 with an `events` bucket is the clean path.
+- `addMemorySchema`'s max-byte cap is fixed at module-load time via `getAddMemoryMaxBytes()`. Operators changing `QUACK_ADD_MEMORY_MAX_BYTES` at runtime won't see the new cap without restart — matches normal env-var semantics; per-call schema construction was rejected as unjustified for this property.
