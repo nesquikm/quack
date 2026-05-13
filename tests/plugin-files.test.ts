@@ -7,6 +7,32 @@ import { join } from "node:path";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 
+describe("AC-ZSN2GG.3 — plugins/quack/hooks/hooks.json registers all three events", () => {
+  test("hooks.json declares SessionStart / Stop / PostToolUse with bash command refs", () => {
+    const raw = readFileSync(join(REPO_ROOT, "plugins/quack/hooks/hooks.json"), "utf8");
+    const cfg = JSON.parse(raw) as {
+      description?: string;
+      hooks: Record<string, Array<{ hooks: Array<{ type: string; command: string }> }>>;
+    };
+    // Claude Code's plugin hook spec keys hooks by event name (CamelCase).
+    // Without this manifest, the shell scripts under plugins/quack/hooks/
+    // never fire — directory-based discovery is insufficient for hooks
+    // (it IS sufficient for commands/ and mcp-servers/, but not hooks/).
+    for (const event of ["SessionStart", "Stop", "PostToolUse"]) {
+      expect(cfg.hooks[event], `hooks.json missing event registration: ${event}`).toBeDefined();
+      const inner = cfg.hooks[event]![0]!.hooks[0]!;
+      expect(inner.type).toBe("command");
+      expect(inner.command).toContain("${CLAUDE_PLUGIN_ROOT}");
+      // Each event must reference its matching .sh file by name so the
+      // SessionStart hook can't accidentally point at stop.sh, etc.
+      const expectedScript = event === "SessionStart" ? "session_start.sh"
+        : event === "Stop" ? "stop.sh"
+        : "post_tool_use.sh";
+      expect(inner.command).toContain(expectedScript);
+    }
+  });
+});
+
 describe("AC-ZSN2GG.4 — mcp-servers/quack.json shape", () => {
   test("declares http transport with env-substituted url and bearer header", () => {
     const raw = readFileSync(join(REPO_ROOT, "plugins/quack/mcp-servers/quack.json"), "utf8");
