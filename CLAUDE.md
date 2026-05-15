@@ -131,6 +131,13 @@ files:
   - path: package.json
     kind: json
     field: version
+  - path: plugins/quack/.claude-plugin/plugin.json
+    kind: json
+    field: version
+  - path: .claude-plugin/marketplace.json
+    kind: regex
+    pattern: '"name": "quack",\s*"version": "(?<version>\d+\.\d+\.\d+)"'
+    replace: '"name": "quack",\n      "version": "{version}"'
   - path: CHANGELOG.md
     kind: changelog
   - path: README.md

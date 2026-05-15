@@ -1,8 +1,8 @@
 ---
 title: Pin plugin metadata version parity with server release
 milestone: M7
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-15T16:11:03Z
 id: fr_01KRNWYJ5KN4CPTRTHKM9MMXZP
 created_at: 2026-05-15T13:30:00Z
 ---
@@ -54,3 +54,8 @@ Forward-only fix: extend the parity contract to be three-way, bump the plugin me
 - Codename for v0.4.1: `Lockstep` — matches the parity invariant the FR introduces.
 - v0.4.1 is the canonical SemVer patch bump on top of v0.4.0; no API or behavior change beyond metadata + test surface.
 - Adding the `regex` entry for `marketplace.json` (rather than a `kind: json` with a nested field path) is the safe path: `parseReleaseFiles` supports json with dot-paths but the test-suite's evidence base for nested paths against an array of objects is thin, and the regex anchored on `"name": "quack"` is unambiguous because quack is the only plugin in the marketplace.
+
+## Implementation notes
+
+- AC-9MMXZP.1 test hard-pins literal `"0.4.1"` (`tests/plugin-version-sync.test.ts:97`) — AC text mandates this exact value; future releases must update the pin alongside the other release-file bumps. The parity test (AC.2) is the durable drift guard.
+- marketplace.json regex pattern uses literal `"name": "quack"` with a literal space after the colon (`CLAUDE.md:139`) — AC-9MMXZP.3 specifies this exact pattern verbatim. A compact JSON serialiser (no space after `:`) would not match, but the marketplace.json file is always pretty-printed.

@@ -167,3 +167,4 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-44QGKH.11 (port hook test matrix into plugin tree) | n/a — test-only | `plugins/quack/hooks/_lib/__tests__/*` |
 | AC-44QGKH.12 (install-flow docs drop binary + PATH steps) | `plugins/quack/README.md`, `README.md` | `tests/plugin-files.test.ts` |
 | AC-44QGKH.13 (traceability matrix refresh) | `specs/requirements.md` | manual review at gate |
+| AC-9MMXZP.1..5 (plugin metadata version parity with server release) | `package.json`, `plugins/quack/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `CLAUDE.md`, `CHANGELOG.md` | `tests/plugin-version-sync.test.ts` |
