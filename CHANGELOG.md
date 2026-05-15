@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-05-15 — "Lockstep"
+
+### Fixed
+
+- **FR-9MMXZP** — Pin plugin metadata version parity with server release. The v0.4.0 ship bumped `package.json` to `0.4.0` but left `plugins/quack/.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` (quack entry) at `0.2.0`, so Claude Code's `/plugin` resolver kept advertising "latest = 0.2.0" and installed clients never received the FR-44QGKH `plugins/quack/hooks/_lib/` tree (the `bunx → _lib/entry/*.ts` chain silent-disabled at the stale cache path). Forward-only fix: `tests/plugin-version-sync.test.ts` extended from two-way to three-way byte-equality (`pkg.version === plugin.version === marketplace.plugins[?(name==quack)].version`), keeping the existing two-way assertion as a sub-case for sharper drift diagnostics. Plugin metadata bumped to `0.4.1`. `CLAUDE.md ## Release Files` block gains two entries (`kind: json` for `plugins/quack/.claude-plugin/plugin.json`, `kind: regex` anchored on `"name": "quack"` for `.claude-plugin/marketplace.json`) so `/ship-milestone` rewrites both plugin-metadata files automatically on every future release.
+
 ## [0.4.0] — 2026-05-15 — "Hermetic"
 
 ### Changed
