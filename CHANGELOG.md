@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-15 — "Hermetic"
+
+### Changed
+
+- **FR-44QGKH** — Plugin-hermetic hooks: the install-side `quack-hook` binary is gone. Hook TS sources moved into `plugins/quack/hooks/_lib/` (ported `dispatch.ts`, `redact.ts`, `post.ts`, `config.ts` plus new `payload.ts` mini-lib owning the stdin-JSON contract, a shared `stdin.ts` reader, and `shared/{envelope,redaction_patterns,redactor}.ts`). Each Claude Code hook event has a thin entry file under `_lib/entry/<name>.ts` (≤ 30 LOC each: `parseHookPayload(stdin) → dispatchHook(kind, payload) → exit 0`, with errors swallowed to stderr so a broken install never breaks a Claude Code session). The existing `.sh` shims collapse to `exec bunx --bun bun "${CLAUDE_PLUGIN_ROOT}/hooks/_lib/entry/<name>.ts" "$@"` (the `bun` token between `--bun` and the path is a Bun 1.3 workaround — `bunx --bun <file.ts>` parses as an `@`-prefixed dep and fails). The `HookEnvelope` type, `HookEnvelopeSchema`, default redaction patterns, and the deep-walk `createRedactor` walker move into the plugin tree (writer owns the wire shape); `src/ingest/handler.ts` and `src/extract/redact.ts` re-export from the plugin paths so no duplication remains. `bun run build:hook` script and the PATH-installed binary are removed; install flow is now `claude plugin marketplace add <repo>` + `/plugin install quack` + per-workspace `cd <workspace> && /quack:install <slug> && direnv allow` with Bun (https://bun.sh) named as the only host prerequisite. Adds three byte-checkable contract tests — `tests/bundled-hooks-shape.test.ts` (hooks.json parses, exact event keys, literal `${CLAUDE_PLUGIN_ROOT}` token, every shim references an existing `_lib/entry/<name>.ts`), `tests/bundled-hooks-shared-fence.test.ts` (server-side imports from the plugin path), `tests/bundled-hooks-cleanup.test.ts` (deletions, README install-flow edits, traceability matrix refresh all landed) — plus a cold-start latency probe (`tests/plugin-hook-latency.test.ts`, 10× per shim, p95 < 500 ms cap; skips when `bunx` absent). Extends `tests/plugin-install-local.test.ts` hermeticity invariants for the new `_lib/` tree.
+
+Total test count at release: 407 tests, 0 failures, 0 errors.
+
 ## [0.3.0] — 2026-05-14 — "Quill"
 
 ### Added
