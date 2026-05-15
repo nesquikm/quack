@@ -1,5 +1,5 @@
 {
-  "description": "Quack memory hooks — stream session context to the local Quack ingest server. The shell wrappers exec the quack-hook binary and silent-disable when it's not on PATH.",
+  "description": "Quack memory hooks — stream session context to the local Quack ingest server. The shell wrappers exec the TS entry files under hooks/_lib/entry/ via bunx and silent-disable when bunx is not on PATH.",
   "hooks": {
     "SessionStart": [
       {

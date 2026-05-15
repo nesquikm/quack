@@ -6,6 +6,11 @@ COPY package.json bun.lock ./
 RUN bun install --production --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
+# Server-side imports the canonical HookEnvelope + redaction_patterns from the
+# plugin tree (post-FR-44QGKH AC.10). Only the `shared/` subdir is needed at
+# runtime; the rest of the plugin (hook entries, shims, README, tests) stays
+# excluded by .dockerignore + this scoped copy.
+COPY plugins/quack/hooks/_lib/shared ./plugins/quack/hooks/_lib/shared
 
 FROM oven/bun:1.3-alpine
 WORKDIR /app
@@ -17,6 +22,7 @@ RUN mkdir -p /data && chown -R bun:bun /data /app
 
 COPY --from=builder --chown=bun:bun /app/node_modules ./node_modules
 COPY --from=builder --chown=bun:bun /app/src ./src
+COPY --from=builder --chown=bun:bun /app/plugins ./plugins
 COPY --chown=bun:bun package.json bun.lock tsconfig.json ./
 
 ENV QUACK_DATA_DIR=/data \

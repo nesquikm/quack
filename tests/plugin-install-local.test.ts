@@ -47,6 +47,17 @@ describe("plugin install — source-tree invariants (always)", () => {
       "mcp-servers/quack.json",
       "commands/quack-install.md",
       "README.md",
+      // AC-44QGKH.8 — _lib/ now lives inside the plugin tree (hermetic).
+      "hooks/_lib/dispatch.ts",
+      "hooks/_lib/redact.ts",
+      "hooks/_lib/post.ts",
+      "hooks/_lib/config.ts",
+      "hooks/_lib/payload.ts",
+      "hooks/_lib/shared/envelope.ts",
+      "hooks/_lib/shared/redaction_patterns.ts",
+      "hooks/_lib/entry/session_start.ts",
+      "hooks/_lib/entry/stop.ts",
+      "hooks/_lib/entry/post_tool_use.ts",
     ];
     for (const rel of required) {
       expect(existsSync(join(PLUGIN_DIR, rel)), `missing ${rel}`).toBe(true);
@@ -54,7 +65,19 @@ describe("plugin install — source-tree invariants (always)", () => {
   });
 
   test("plugin source forbids server / repo-level files", () => {
-    const forbiddenTop = ["src", "compose.yml", "Dockerfile", "specs", "CLAUDE.md", "node_modules", "tests"];
+    // AC-44QGKH.8 — extend hermeticity invariants: dist/ + package.json
+    // (repo-root build artifacts) must never appear in the installed tree.
+    const forbiddenTop = [
+      "src",
+      "dist",
+      "compose.yml",
+      "Dockerfile",
+      "specs",
+      "CLAUDE.md",
+      "node_modules",
+      "tests",
+      "package.json",
+    ];
     const entries = readdirSync(PLUGIN_DIR);
     for (const f of forbiddenTop) {
       expect(entries.includes(f), `plugins/quack/ unexpectedly contains '${f}'`).toBe(false);
@@ -70,7 +93,10 @@ describe("plugin install — source-tree invariants (always)", () => {
     }
   });
 
-  test("plugin source footprint is small (< 50 KB)", () => {
+  test("plugin source footprint is small (< 100 KB)", () => {
+    // AC-44QGKH.8 — bumped from 50 KB to 100 KB because the hook code
+    // (dispatch + redact + post + config + payload + entries + ported
+    // tests) now lives inside the plugin tree under hooks/_lib/.
     let total = 0;
     function walk(dir: string): void {
       for (const entry of readdirSync(dir)) {
@@ -81,7 +107,7 @@ describe("plugin install — source-tree invariants (always)", () => {
       }
     }
     walk(PLUGIN_DIR);
-    expect(total).toBeLessThan(50_000);
+    expect(total).toBeLessThan(100_000);
   });
 });
 
@@ -128,11 +154,27 @@ describe("plugin install — real CLI round-trip (opt-in)", () => {
         "mcp-servers/quack.json",
         "commands/quack-install.md",
         "README.md",
+        // AC-44QGKH.8 — _lib/ must be installed alongside the shims.
+        "hooks/_lib/dispatch.ts",
+        "hooks/_lib/payload.ts",
+        "hooks/_lib/entry/session_start.ts",
+        "hooks/_lib/entry/stop.ts",
+        "hooks/_lib/entry/post_tool_use.ts",
       ];
       for (const rel of requiredAtInstall) {
         expect(existsSync(join(installedRoot, rel)), `installed plugin missing ${rel}`).toBe(true);
       }
-      const forbiddenAtInstall = ["src", "compose.yml", "Dockerfile", "specs", "CLAUDE.md", "node_modules", "tests"];
+      const forbiddenAtInstall = [
+        "src",
+        "dist",
+        "compose.yml",
+        "Dockerfile",
+        "specs",
+        "CLAUDE.md",
+        "node_modules",
+        "tests",
+        "package.json",
+      ];
       for (const rel of forbiddenAtInstall) {
         expect(existsSync(join(installedRoot, rel)), `installed plugin must not contain ${rel}`).toBe(false);
       }

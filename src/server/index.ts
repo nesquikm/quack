@@ -24,7 +24,7 @@ import { createDeadLetterWriter } from "../extract/dead_letter";
 import { startConsumer, type Consumer, type QueuedEnvelope } from "../extract/consumer";
 import { handleIngest } from "../ingest/handler";
 import { setQueueDepthSource, queueIncrement } from "../metrics/counters";
-import { parseExtraPatternsFromEnv } from "../shared/redaction_patterns";
+import { parseExtraPatternsFromEnv } from "../../plugins/quack/hooks/_lib/shared/redaction_patterns";
 import packageJson from "../../package.json" with { type: "json" };
 import type { Neo4jDriver } from "../graph/types";
 

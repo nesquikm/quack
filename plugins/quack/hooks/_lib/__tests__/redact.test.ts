@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildHookRedactor } from "./redact";
+import { buildHookRedactor } from "../redact";
 
 describe("buildHookRedactor", () => {
   test("default patterns active", () => {

@@ -1,6 +1,6 @@
 // Single source of truth for the default redaction pattern set. Used by:
-//  - src/extract/redact.ts  (server-side, FR-4NY6S1 AC.5)
-//  - src/hooks/redact.ts    (client-side, FR-S2D0Z5 AC.6 — same defaults)
+//  - plugins/quack/hooks/_lib/redact.ts (client-side hook redaction)
+//  - src/extract/redact.ts              (server-side, post-AC-44QGKH.10)
 // Operators extending the list set QUACK_REDACTION_PATTERNS (server) or
 // QUACK_HOOK_REDACTION_PATTERNS (client) — appended to these defaults.
 

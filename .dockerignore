@@ -12,9 +12,14 @@ tests/
 data/
 .dpt-locks/
 coverage/
-# quack-hook is a client-side artifact, not part of the server image.
+# Client-side build artifacts (if any) — not part of the server image.
 dist/
 # Marketplace plugin source — installed via Claude Code, not part of the
 # server image. (.claude-plugin/ at repo root is also plugin-only.)
 plugins/
 .claude-plugin/
+# Re-include the canonical HookEnvelope + redaction_patterns source. The
+# server imports these from the plugin tree per FR-44QGKH AC.10 (writer
+# owns the wire shape); they must ship in the image.
+!plugins/quack/hooks/_lib/shared
+!plugins/quack/hooks/_lib/shared/**

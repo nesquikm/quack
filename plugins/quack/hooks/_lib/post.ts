@@ -4,7 +4,7 @@
 // timeout, non-2xx response — log one stderr line then resolve cleanly so
 // the calling script can exit 0. NEVER throws.
 
-import type { HookEnvelope } from "../ingest/handler";
+import type { HookEnvelope } from "./shared/envelope";
 
 // Minimal contract — Bun.fetch has extra fields (preconnect, etc.) we don't
 // use, and binding a generic fetch type into a test stub bloats the seam.

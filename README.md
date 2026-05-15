@@ -4,22 +4,20 @@ A personal memory layer for Claude Code.
 
 ## Install as Claude Code plugin
 
-End users — the supported install path is the marketplace plugin. From a
-clone of this repo:
+End users — the supported install path is the marketplace plugin. The
+only host prerequisite is Bun ([https://bun.sh](https://bun.sh)) — the
+plugin's hook shims execute their TS sources via `bunx --bun`, no
+precompile / no PATH plumbing. From a clone of this repo:
 
 ```bash
 # 1. Bring up the server (one-time).
 docker compose up -d
 
-# 2. Build + install the hook binary on PATH (one-time).
-bun install && bun run build:hook
-install -m 755 dist/quack-hook ~/.local/bin/quack-hook
-
-# 3. Install the plugin (one-time).
+# 2. Install the plugin (one-time).
 claude plugin marketplace add ./
 claude plugin install quack@quack
 
-# 4. Bind each workspace (repeat per workspace).
+# 3. Bind each workspace (repeat per workspace).
 cd <your-workspace>
 export QUACK_ADMIN_TOKEN=<admin-token-from-first-boot>
 /quack:install <slug>
@@ -73,31 +71,19 @@ The `graphdb` service runs `neo4j:5-community` and is required from M3 onward
 
 ### Hooks installation (Claude Code → /ingest)
 
-`quack-hook` is a single self-contained binary built with `bun build --compile`.
-It reads the hook payload from stdin, applies a client-side redaction pass
-(same default pattern set as the server, defense-in-depth), and fire-and-forget
-POSTs the envelope to `${QUACK_SERVER_URL}/ingest`. Failures log to stderr and
-exit 0 — the Claude Code session is never broken by a hook server issue.
+Hooks ship inside the marketplace plugin (`plugins/quack/hooks/`). Each
+Claude Code hook event is a 2-line shell shim that `exec`s
+`bunx --bun "${CLAUDE_PLUGIN_ROOT}/hooks/_lib/entry/<name>.ts"`. The TS
+entry reads the hook payload from stdin, applies a client-side redaction
+pass (same default pattern set as the server, defense-in-depth), and
+fire-and-forget POSTs the envelope to `${QUACK_SERVER_URL}/ingest`.
+Failures log to stderr and exit 0 — the Claude Code session is never
+broken by a hook server issue. If `bunx` is not on PATH the shim exits 0
+silently with one stderr line pointing at [https://bun.sh](https://bun.sh).
 
-```bash
-# 1. Build the binary (no runtime needed at the install target).
-bun run build:hook
-
-# 2. Install onto your PATH.
-install -m 755 dist/quack-hook ~/.local/bin/quack-hook
-
-# 3. Initialize a per-project config + print the hooks snippet to paste into
-#    your Claude Code hooks config.
-quack-hook init my-project-slug
-# → writes ~/.quack/projects/my-project-slug.env (edit to fill in QUACK_TOKEN)
-# → prints a Claude Code hooks-config YAML snippet on stdout.
-
-# 4. Paste the printed snippet into Claude Code's hooks config and restart
-#    a session. Tail the Quack server logs to confirm 202 on /ingest.
-```
-
-The compiled binary is intentionally NOT included in the Docker image
-(`.dockerignore` excludes `dist/`) — it's a client-side artifact.
+The plugin install path is the supported flow — see "Install as Claude
+Code plugin" above. There is no compiled binary; the hook TS sources live
+in `plugins/quack/hooks/_lib/` and are executed in-place by `bunx`.
 
 ### Backup
 
