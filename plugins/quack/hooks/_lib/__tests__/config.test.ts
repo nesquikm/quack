@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveConfig, parseDotenv } from "./config";
+import { resolveConfig, parseDotenv } from "../config";
 
 describe("parseDotenv", () => {
   test("KEY=value lines", () => {

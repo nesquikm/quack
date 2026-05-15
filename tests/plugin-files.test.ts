@@ -53,12 +53,16 @@ describe("AC-ZSN2GG.4 — mcp-servers/quack.json shape", () => {
   });
 });
 
-describe("AC-ZSN2GG.6 — plugins/quack/README.md four-step flow", () => {
+describe("AC-44QGKH.12 — plugins/quack/README.md three-step install flow", () => {
+  // FR-44QGKH replaces the previous FR-ZSN2GG four-step flow: the
+  // `bun run build:hook` + PATH install step is gone (hooks run via
+  // `bunx --bun` against the plugin-bundled TS sources). Bun is named
+  // as the sole host prerequisite.
   test.each([
     "Step 1. Clone the Quack repo",
-    "Step 2. Build the `quack-hook` binary",
-    "Step 3. Install the plugin from the local marketplace",
-    "Step 4. Per-workspace",
+    "Step 2. Install the plugin from the local marketplace",
+    "Step 3. Per-workspace",
+    "https://bun.sh",
     "Manual smoke (AC-ZSN2GG.11)",
   ])("contains heading: %s", (needle) => {
     const body = readFileSync(join(REPO_ROOT, "plugins/quack/README.md"), "utf8");

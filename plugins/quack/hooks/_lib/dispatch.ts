@@ -1,7 +1,7 @@
 import { buildHookRedactor } from "./redact";
 import { resolveConfig } from "./config";
 import { postEnvelope, type FetchLike } from "./post";
-import type { HookEnvelope } from "../ingest/handler";
+import type { HookEnvelope } from "./shared/envelope";
 
 const KNOWN_KINDS = new Set(["session_start", "stop", "post_tool_use"]);
 

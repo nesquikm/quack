@@ -1,48 +1,17 @@
-import { compilePatterns, REDACTION_REPLACEMENT } from "../shared/redaction_patterns";
-
-// Deep-walk redaction. Applied to the hook payload BEFORE the outbound model
-// POST. Patterns compile once at construction; no per-request recompilation.
+// Server-side redactor — thin re-export of the canonical deep-walk redactor
+// that lives in the plugin tree (post-AC-44QGKH.10 the writer owns the wire
+// format, including redaction). The default pattern list and walker both
+// originate under `plugins/quack/hooks/_lib/shared/`.
 //
-// Replacement count is reported back so the caller can increment the
-// `redaction_match` info-level counter (visible in errors.by_category).
+// The `redaction_patterns` mention below is load-bearing for the bundled-
+// hooks-shared-fence contract test (AC-44QGKH.10), which scans this file for
+// a plugin-shared import path.
 
-export interface Redactor {
-  redact<T>(value: T): { value: T; matchCount: number };
-}
-
-export function createRedactor(extras: readonly string[] = []): Redactor {
-  const patterns = compilePatterns(extras);
-
-  function redactString(s: string, counter: { n: number }): string {
-    let out = s;
-    for (const re of patterns) {
-      re.lastIndex = 0;
-      out = out.replace(re, () => {
-        counter.n += 1;
-        return REDACTION_REPLACEMENT;
-      });
-    }
-    return out;
-  }
-
-  function walk(v: unknown, counter: { n: number }): unknown {
-    if (typeof v === "string") return redactString(v, counter);
-    if (Array.isArray(v)) return v.map((x) => walk(x, counter));
-    if (v !== null && typeof v === "object") {
-      const out: Record<string, unknown> = {};
-      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-        out[k] = walk(val, counter);
-      }
-      return out;
-    }
-    return v;
-  }
-
-  return {
-    redact<T>(value: T): { value: T; matchCount: number } {
-      const counter = { n: 0 };
-      const v = walk(value, counter) as T;
-      return { value: v, matchCount: counter.n };
-    },
-  };
-}
+export { createRedactor, type Redactor } from "../../plugins/quack/hooks/_lib/shared/redactor";
+// Re-exported so the patterns-import contract (see plugins/quack/hooks/_lib/shared/redaction_patterns.ts)
+// remains visible from this module's surface — consumers don't have to know
+// the shared module split.
+export {
+  DEFAULT_REDACTION_PATTERNS,
+  REDACTION_REPLACEMENT,
+} from "../../plugins/quack/hooks/_lib/shared/redaction_patterns";

@@ -15,7 +15,16 @@ locally via `docker compose`. The marketplace install **never** copies the
 server into your `~/.claude/plugins/quack/` install — only the files in
 this directory.
 
-## Install — four steps
+## Prerequisites
+
+- **Bun** ([https://bun.sh](https://bun.sh)) on PATH — the only host
+  prerequisite. The plugin's hook shims execute their TS sources via
+  `bunx --bun` (no precompile, no binary, no PATH plumbing).
+- **Docker Compose v2** — to run the Quack server stack.
+- **direnv** (optional but recommended) — to auto-load per-workspace
+  env vars written by `/quack:install`.
+
+## Install — three steps
 
 ### Step 1. Clone the Quack repo and bring the server up
 
@@ -30,23 +39,9 @@ curl -fsS http://127.0.0.1:7474/health
 ```
 
 The bootstrap token is consumed on first boot only — the server logs the
-initial admin token. Capture it; you will need it in step 4.
+initial admin token. Capture it; you will need it in step 3.
 
-### Step 2. Build the `quack-hook` binary and put it on PATH
-
-```bash
-bun install
-bun run build:hook
-install -m 755 dist/quack-hook ~/.local/bin/quack-hook
-quack-hook --version   # sanity check
-```
-
-The hooks shipped by this plugin are thin shell wrappers that `exec
-quack-hook <kind>`. If the binary isn't on PATH the wrappers exit `0`
-silently and print one stderr line — broken installs never break Claude
-Code sessions.
-
-### Step 3. Install the plugin from the local marketplace
+### Step 2. Install the plugin from the local marketplace
 
 From the cloned `quack/` repo root:
 
@@ -59,7 +54,12 @@ This copies `plugins/quack/` (this directory) into your Claude Code plugin
 install root (`~/.claude/plugins/cache/quack/quack/<version>/`). Verify
 with `claude plugin list` — you should see `quack@quack` enabled.
 
-### Step 4. Per-workspace: bind a project and let direnv load it
+The shipped hook wrappers `exec bunx --bun
+"${CLAUDE_PLUGIN_ROOT}/hooks/_lib/entry/<name>.ts"`. If `bunx` is not on
+PATH the wrappers exit `0` silently and print one stderr line — broken
+installs never break Claude Code sessions.
+
+### Step 3. Per-workspace: bind a project and let direnv load it
 
 In each workspace where you want Quack memory:
 
@@ -82,9 +82,11 @@ environment.
 plugins/quack/
 ├── .claude-plugin/plugin.json     # plugin manifest (single source of truth for version)
 ├── hooks/
-│   ├── session_start.sh           # exec quack-hook session_start
-│   ├── stop.sh                    # exec quack-hook stop
-│   └── post_tool_use.sh           # exec quack-hook post_tool_use
+│   ├── hooks.json                 # event → command mapping (literal ${CLAUDE_PLUGIN_ROOT})
+│   ├── session_start.sh           # 2-line bunx wrapper → _lib/entry/session_start.ts
+│   ├── stop.sh                    # 2-line bunx wrapper → _lib/entry/stop.ts
+│   ├── post_tool_use.sh           # 2-line bunx wrapper → _lib/entry/post_tool_use.ts
+│   └── _lib/                      # canonical TS hook sources (dispatch/redact/post/config/payload + entries)
 ├── mcp-servers/quack.json         # Quack memory MCP server (HTTP + Bearer)
 ├── commands/quack-install.md      # /quack:install <slug>
 └── README.md                      # this file
@@ -146,9 +148,9 @@ add <quack-repo> && claude plugin install quack@quack`):
 - **`claude plugin install quack@quack` fails** — check `claude plugin
   marketplace list` shows the local marketplace; re-run
   `claude plugin marketplace add ./` from the Quack repo root.
-- **`[quack-hook plugin] binary not found`** stderr line — `quack-hook` is
-  not on PATH. Re-run step 2 or re-export your PATH in
-  `~/.zshrc` / `~/.bashrc`.
+- **`[quack-hook plugin] bunx not found`** stderr line — install Bun
+  ([https://bun.sh](https://bun.sh)) so per-workspace memory hooks can
+  fire.
 - **MCP server fails to connect after `claude plugin install`** — usually means
   `QUACK_TOKEN` is unset. `/quack:install <slug>` mints one.
 - **Hooks fire but nothing lands in Neo4j** — tail
@@ -159,6 +161,6 @@ add <quack-repo> && claude plugin install quack@quack`):
 
 - Repo-root [README](../../README.md) — server deployment + the rest of
   the operator surface.
-- The `quack-hook` binary's own contract — defined under `src/hooks/` in
-  the Quack repo. The plugin only depends on the three subcommand names
-  (`session_start`, `stop`, `post_tool_use`).
+- The canonical hook TS sources live under `plugins/quack/hooks/_lib/`
+  inside the plugin tree. The plugin depends on the three hook kinds
+  (`session_start`, `stop`, `post_tool_use`) wired through `hooks.json`.

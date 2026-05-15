@@ -130,7 +130,7 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-4NY6S1.1–2 (HookEnvelope validation + 202 backpressure) | `src/ingest/handler.ts` | `src/ingest/handler.test.ts` |
 | AC-4NY6S1.3 (typed FIFO ring buffer) | `src/extract/queue.ts` | `src/extract/queue.test.ts` |
 | AC-4NY6S1.4 (consumer concurrency cap + graceful drain) | `src/extract/consumer.ts` | `src/extract/consumer.test.ts` |
-| AC-4NY6S1.5 (redaction pass + shared patterns) | `src/extract/redact.ts`, `src/shared/redaction_patterns.ts` | `src/extract/redact.test.ts` |
+| AC-4NY6S1.5 (redaction pass + shared patterns) | `src/extract/redact.ts`, `plugins/quack/hooks/_lib/shared/redaction_patterns.ts` | `src/extract/redact.test.ts` |
 | AC-4NY6S1.6–8 (cheap-model client + Zod + canonicalize) | `src/extract/{client,prompt,canonicalize}.ts` | `src/extract/{client,prompt,canonicalize}.test.ts` |
 | AC-4NY6S1.9 (six MERGE templates) | `src/graph/templates/extract/*.ts` | `src/extract/pipeline.test.ts` |
 | AC-4NY6S1.10 (counter integration → server_status) | `src/metrics/counters.ts` | `src/extract/consumer.test.ts`, `src/admin/tools/server_status.test.ts` |
@@ -144,13 +144,6 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-EDXH3X.8 (project_id reuse not a concern) | n/a — design property of SQLite INTEGER PRIMARY KEY | covered by `src/extract/cleanup.test.ts` |
 | AC-EDXH3X.9–10 (e2e delete-then-sweep + cross-tenant) | `src/extract/cleanup_sweeper.ts`, `src/graph/templates/cleanup/*` | `src/extract/cleanup.test.ts` (skipped when docker absent) |
 | AC-EDXH3X.11 (fail_count column + stuck-row backoff) | `src/auth/sqlite/schema.ts`, `src/extract/cleanup_sweeper.ts` | `src/auth/sqlite/schema.test.ts`, `src/extract/cleanup_sweeper.test.ts` |
-| AC-S2D0Z5.1–3 (single-binary build + argv dispatch + stdin) | `src/hooks/quack-hook.ts`, `package.json` (`build:hook`) | `src/hooks/quack-hook.test.ts`, `tests/hook-binary.test.ts` |
-| AC-S2D0Z5.4–5 (envelope POST + fire-and-forget timeout) | `src/hooks/{dispatch,post}.ts` | `src/hooks/{dispatch,post}.test.ts` |
-| AC-S2D0Z5.6 (client-side redaction shared with server) | `src/hooks/redact.ts`, `src/shared/redaction_patterns.ts` | `src/hooks/redact.test.ts` |
-| AC-S2D0Z5.7–8 (config resolution + init subcommand) | `src/hooks/{config,init}.ts` | `src/hooks/{config,init}.test.ts` |
-| AC-S2D0Z5.9 (README hooks section) | `README.md` | manual review + `tests/compose-config.test.ts` |
-| AC-S2D0Z5.10–12 (perf + integration test) | `src/hooks/*` | `tests/hook-binary.test.ts` (skipped when build fails) |
-| AC-S2D0Z5.13 (.dockerignore excludes dist/) | `.dockerignore` | `tests/compose-config.test.ts` |
 | AC-ZSN2GG.1 (marketplace.json canonical shape) | `.claude-plugin/marketplace.json` | `tests/plugin-version-sync.test.ts` |
 | AC-ZSN2GG.2 (plugin.json + version parity) | `plugins/quack/.claude-plugin/plugin.json` | `tests/plugin-version-sync.test.ts` |
 | AC-ZSN2GG.3 (three chmod +x hook wrappers + silent-disable) | `plugins/quack/hooks/{session_start,stop,post_tool_use}.sh` | `tests/plugin-hooks-syntax.test.ts` |
@@ -163,3 +156,14 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-ZSN2GG.10 (plugin / marketplace version-sync test) | n/a — test-only | `tests/plugin-version-sync.test.ts` |
 | AC-ZSN2GG.11 (M4 closeout manual smoke) | `plugins/quack/README.md` (procedure) | deferred — manual operator step; requires live Claude Code workspace + real model API key |
 | AC-41NXTZ.1..11 (add_memory MCP tool — Zod schema, synthetic envelope, queue reuse, HookKind union, prompt branch, MERGE-template reuse, manifest, info counter, e2e) | `src/mcp/tools/memory/add_memory.ts`, `src/mcp/server.ts`, `src/server/index.ts`, `src/index.ts`, `src/ingest/handler.ts`, `src/extract/prompt.ts`, `src/extract/consumer.ts`, `src/shared/env.ts` | `src/mcp/tools/memory/add_memory.test.ts`, `src/extract/prompt.test.ts`, `src/extract/consumer.test.ts`, `src/extract/pipeline.test.ts` (docker), `src/mcp/tools/memory/cross_tenant.test.ts` (docker), `src/mcp/server.test.ts`, `src/admin/tools/server_status.test.ts`, `src/ingest/handler.test.ts`, `src/shared/env.test.ts` |
+| AC-44QGKH.1–2 (hook modules + entry files under plugins/quack/hooks/_lib/) | `plugins/quack/hooks/_lib/{dispatch,redact,post,config,payload}.ts`, `plugins/quack/hooks/_lib/shared/{envelope,redaction_patterns,redactor}.ts`, `plugins/quack/hooks/_lib/entry/{session_start,stop,post_tool_use}.ts` | `plugins/quack/hooks/_lib/__tests__/{dispatch,redact,post,config,entry}.test.ts` |
+| AC-44QGKH.3–4 (bunx shell wrappers + hooks.json literal token) | `plugins/quack/hooks/{session_start,stop,post_tool_use}.sh`, `plugins/quack/hooks/hooks.json` | `tests/plugin-hooks-syntax.test.ts`, `tests/bundled-hooks-shape.test.ts` |
+| AC-44QGKH.5 (parseHookPayload contract lib) | `plugins/quack/hooks/_lib/payload.ts` | `plugins/quack/hooks/_lib/__tests__/payload.test.ts` |
+| AC-44QGKH.6 (byte-checkable bundled-hooks-shape gate) | n/a — test-only | `tests/bundled-hooks-shape.test.ts` |
+| AC-44QGKH.7 (cold-start latency probe p95 < 500 ms) | n/a — test-only | `tests/plugin-hook-latency.test.ts` (skipped when bunx absent) |
+| AC-44QGKH.8 (plugin hermeticity invariants extended) | n/a — test-only | `tests/plugin-install-local.test.ts` |
+| AC-44QGKH.9 (delete src/hooks/ + build:hook + dist/quack-hook line) | `package.json`, `.dockerignore`, `Dockerfile` | `tests/bundled-hooks-cleanup.test.ts` |
+| AC-44QGKH.10 (shared envelope + redaction_patterns move into plugin) | `plugins/quack/hooks/_lib/shared/{envelope,redaction_patterns,redactor}.ts`, `src/ingest/handler.ts`, `src/extract/redact.ts` | `bunx tsc --noEmit`, `tests/bundled-hooks-shared-fence.test.ts`, `src/ingest/handler.test.ts`, `src/extract/redact.test.ts` |
+| AC-44QGKH.11 (port hook test matrix into plugin tree) | n/a — test-only | `plugins/quack/hooks/_lib/__tests__/*` |
+| AC-44QGKH.12 (install-flow docs drop binary + PATH steps) | `plugins/quack/README.md`, `README.md` | `tests/plugin-files.test.ts` |
+| AC-44QGKH.13 (traceability matrix refresh) | `specs/requirements.md` | manual review at gate |

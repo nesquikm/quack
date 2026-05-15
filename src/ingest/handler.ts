@@ -1,28 +1,20 @@
-import { z } from "zod";
 import type { Database } from "bun:sqlite";
 import type { AuthContext } from "../auth/middleware";
 import type { BoundedQueue } from "../extract/queue";
 import type { QueuedEnvelope } from "../extract/consumer";
 import { incrementError } from "../metrics/counters";
 import { queueIncrement } from "../metrics/counters";
+import {
+  HookEnvelopeSchema,
+  HookKindSchema,
+  type HookEnvelope,
+  type HookKind,
+} from "../../plugins/quack/hooks/_lib/shared/envelope";
 
-// HookEnvelope per AC-4NY6S1.1. HookKind is the literal-string union from
-// FR-S2D0Z5 — for M3 we ship session_start / stop / post_tool_use.
-// FR-41NXTZ AC.5 (M5) — extended with "explicit_add" for the add_memory MCP tool.
-export const HookKindSchema = z.enum([
-  "session_start",
-  "stop",
-  "post_tool_use",
-  "explicit_add",
-]);
-export const HookEnvelopeSchema = z.object({
-  kind: HookKindSchema,
-  payload: z.record(z.string(), z.unknown()),
-  project_slug: z.string().optional(),
-  ts: z.string().optional(),
-});
-
-export type HookEnvelope = z.infer<typeof HookEnvelopeSchema>;
+// HookEnvelope per AC-4NY6S1.1 + FR-44QGKH AC.10 — canonical wire shape lives
+// with the writer (the plugin hook tree). The schema is re-exported here so
+// existing import sites (handler tests, etc.) keep working.
+export { HookKindSchema, HookEnvelopeSchema, type HookKind, type HookEnvelope };
 
 export interface IngestDeps {
   queue: BoundedQueue<QueuedEnvelope>;

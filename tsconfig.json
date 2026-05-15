@@ -17,12 +17,11 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "rootDir": "src",
     "baseUrl": ".",
     "paths": {
       "~/*": ["src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "plugins/quack/hooks/_lib/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
