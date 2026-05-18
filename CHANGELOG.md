@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-18 — "Confederation"
+
+### Added
+
+- **FR-A9BN0M** — Sub-project `source` tag for cross-project memory recall. A connected set of repos (backend, frontend, shared packages) can share one Quack project and one token while every memory carries — and is filterable by — its origin sub-project. `project_id` stays the hard tenancy boundary; `source` is a non-security provenance/filter label. `HookEnvelope` gains an optional slug-validated `sub_project` field (malformed ⇒ `POST /ingest` returns 400 `invalid_envelope` path `["sub_project"]`). All five memory-plane node labels (`Entity`, `Decision`, `File`, `Symbol`, `Feedback`) carry a `source: list<string>` property, accumulated by no-APOC set-union across the five node-upsert `MERGE` templates — an entity mentioned in two repos stays one node with a two-element `source`, never fragmented. `src/extract/writer.ts` threads `envelope.sub_project` as `$source` into every node upsert, re-validating the slug (defense-in-depth; distinct from the model-supplied-`project_id` override path). The four read-side memory tools (`search_memory`, `get_neighbors`, `path_between`, `recent_decisions`) gain an optional `sub_projects?: string[]` filter applied as a parameterized Cypher predicate (`$sub_projects = [] OR n.source IS NULL OR ANY(s IN $sub_projects WHERE s IN n.source)`) — `$project_id` stays the non-negotiable tenancy bind, untagged nodes always match, and default (absent/empty) recall is byte-unchanged. `add_memory` stamps the sub-project from the `X-Quack-Sub-Project` request header. Cross-tenant isolation re-verified by an adversarial test: a `sub_projects` value cannot widen a query past the caller's `project_id`.
+
+### Changed
+
+- **FR-55S220** — Config delivery via a single `.mcp.json`, replacing the direnv/`.envrc` mechanism. `/quack:install` is rewritten: it writes a project-scoped `.mcp.json` at the workspace root (declaring the Quack MCP server with its URL, the literal per-workspace token, and an `X-Quack-Sub-Project` header), merges into an existing `mcpServers` object without disturbing siblings, refuses to overwrite an existing `quack` entry, is adaptive on token minting (mints via the idempotent admin-MCP flow when an admin token is available, else prompts for a pasted token), and derives a suggested sub-project slug from the git remote. The plugin's `mcp-servers/quack.json` is deleted — the Quack MCP server is declared **only** by the `.mcp.json` `/quack:install` writes. The plugin hooks read configuration from `.mcp.json` (walking up from `CLAUDE_PROJECT_DIR`/cwd) instead of `process.env`; the hook envelope now carries `sub_project` and omits the redundant `project_slug` (the server resolves the project from the token). Both READMEs drop the `.envrc` / `direnv allow` install steps and the env-var table; the committed-literal-token MVP tradeoff is documented in three places (`/quack:install` closing output, the plugin README, a new `technical-spec.md` Key Design Decision row). **Breaking:** the per-workspace config mechanism moves from `.envrc` environment variables to `.mcp.json` — forward-only, no installed-user migration (`project_no_users_yet`).
+
+Total test count at release: 549 tests, 0 failures, 0 errors.
+
 ## [0.4.1] — 2026-05-15 — "Lockstep"
 
 ### Fixed
