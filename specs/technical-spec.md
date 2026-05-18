@@ -51,11 +51,9 @@ plugins/
     ├── .claude-plugin/
     │   └── plugin.json     # plugin manifest (name, version, description, etc.)
     ├── hooks/
-    │   ├── session_start.sh    # thin shell wrappers around the M3 quack-hook binary
+    │   ├── session_start.sh    # thin bunx shell wrappers around the in-plugin TS hook logic
     │   ├── stop.sh
     │   └── post_tool_use.sh
-    ├── mcp-servers/
-    │   └── quack.json      # MCP server declaration with ${QUACK_TOKEN} + ${QUACK_SERVER_URL} substitution
     ├── commands/
     │   └── quack-install.md   # /quack:install <slug> slash command
     └── README.md
@@ -63,9 +61,9 @@ plugins/
 
 When a user installs the plugin from the marketplace, **only `plugins/quack/` is downloaded** — the rest of the repo (`src/`, `compose.yml`, `Dockerfile`, `specs/`, `tests/`, `package.json`, etc.) stays out of the install. The plugin is a packaging convenience; the server is the source of truth.
 
-Hooks are **thin shell scripts that exec the `quack-hook` binary** (built per FR-S2D0Z5 `bun run build:hook` + installed on PATH). The plugin doesn't ship a binary — keeps the install tiny and avoids platform-specific binary packaging. If `quack-hook` is not on PATH, hook scripts exit 0 silently with a one-line stderr hint.
+Hooks are **thin shell scripts that `bunx`-run the in-plugin TypeScript hook logic** (FR-44QGKH — no compiled binary, no PATH install). The plugin doesn't ship a binary — keeps the install tiny and avoids platform-specific binary packaging. The hooks read per-workspace configuration from `.mcp.json` (FR-55S220); when `.mcp.json` is absent, has no `quack` entry, or is malformed, the hook silently no-ops and exits 0.
 
-The MCP server config uses env-var substitution: `${QUACK_SERVER_URL}` defaults to `http://127.0.0.1:7474`; `${QUACK_TOKEN}` has no default (absence ⇒ MCP connection fails loudly, prompting the user to `/quack:install <slug>` for the workspace). Per-workspace config lives in `.envrc` (or similar) sourced by direnv / mise / manual `source`.
+Per-workspace configuration lives in a single project-scoped `.mcp.json` at the workspace root, written by `/quack:install` (FR-55S220). It is the **one** config artifact: it declares the Quack MCP server with a literal non-admin single-project token plus the server URL, and carries an `X-Quack-Sub-Project` header. Claude Code reads `.mcp.json` natively on session start; the hooks read the same `mcpServers.quack` object for server URL + token + sub-project. No env-var plumbing. A workspace that has not run `/quack:install` has no Quack MCP server and no token.
 
 ### Key Design Decisions
 
@@ -85,6 +83,7 @@ The MCP server config uses env-var substitution: `${QUACK_SERVER_URL}` defaults 
 | Graph-DB driver | `neo4j-driver` (Bolt protocol) | Official driver; pure JS; Bun-compatible |
 | Cross-tenant isolation | Per-project graph partitioning + middleware-resolved `project_id` + parameterized-template-only `GraphAdapter` | Three layers of defense — middleware resolves `project_id` from the token; `GraphAdapter.run(templateId, params, ctx)` is the only Cypher entry point; `project_id` is a non-negotiable bind parameter in every template (never string-concatenated) |
 | Read-path synthesis split | Server returns structured DTOs (+ `<memory>` wrap + mandatory `meta` envelope); Claude Code synthesizes | Avoid duplicating LLM capabilities; smallest prompt-injection-laundering surface; preserves caller as planner per `/brainstorm` |
+| Config artifact | `.mcp.json` at the workspace root, holding a literal non-admin single-project token; committed by default for MVP | Claude Code reads `.mcp.json` natively on session start — no env-var plumbing. The token cannot mint/revoke other tokens and is scoped to one project, so its blast radius is small enough to commit. Post-MVP path: `${QUACK_TOKEN}` substitution reference + `.gitignore` so the secret leaves source control |
 
 ## 2. Data Model
 

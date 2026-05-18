@@ -21,8 +21,6 @@ this directory.
   prerequisite. The plugin's hook shims execute their TS sources via
   `bunx --bun` (no precompile, no binary, no PATH plumbing).
 - **Docker Compose v2** — to run the Quack server stack.
-- **direnv** (optional but recommended) — to auto-load per-workspace
-  env vars written by `/quack:install`.
 
 ## Install — three steps
 
@@ -59,7 +57,7 @@ The shipped hook wrappers `exec bunx --bun
 PATH the wrappers exit `0` silently and print one stderr line — broken
 installs never break Claude Code sessions.
 
-### Step 3. Per-workspace: bind a project and let direnv load it
+### Step 3. Per-workspace: bind a project
 
 In each workspace where you want Quack memory:
 
@@ -67,14 +65,15 @@ In each workspace where you want Quack memory:
 cd <your-workspace>
 export QUACK_ADMIN_TOKEN=<the admin token from step 1>
 /quack:install <slug>      # in a Claude Code session inside this workspace
-direnv allow
 ```
 
 `/quack:install <slug>` (this plugin) mints a per-workspace `(user,
-project)` token via the admin MCP tools and writes a `.envrc`. After
-`direnv allow` every Claude Code session opened in this workspace picks
-up `QUACK_TOKEN` + `QUACK_SERVER_URL` + `QUACK_PROJECT_SLUG` from the
-environment.
+project)` token via the admin MCP tools and writes a project-scoped
+`.mcp.json` at the workspace root. That file declares the Quack MCP
+server with the workspace's server URL and token baked into the entry.
+**Restart your Claude Code session once** after `/quack:install` finishes
+— Claude Code reads `.mcp.json` on session start, so the new MCP server
+is picked up only on the next session.
 
 ## What this plugin ships
 
@@ -87,31 +86,40 @@ plugins/quack/
 │   ├── stop.sh                    # 2-line bunx wrapper → _lib/entry/stop.ts
 │   ├── post_tool_use.sh           # 2-line bunx wrapper → _lib/entry/post_tool_use.ts
 │   └── _lib/                      # canonical TS hook sources (dispatch/redact/post/config/payload + entries)
-├── mcp-servers/quack.json         # Quack memory MCP server (HTTP + Bearer)
 ├── commands/quack-install.md      # /quack:install <slug>
 └── README.md                      # this file
 ```
 
-## Environment
+## Configuration — `.mcp.json`
 
-The MCP server config reads two variables — set them per-workspace via
-`.envrc` (recommended) or globally in your shell profile.
+Quack needs no per-workspace environment variables. `/quack:install`
+writes a project-scoped `.mcp.json` at the workspace root that declares
+the Quack MCP server directly:
 
-| Variable           | Default                     | Notes                                       |
-|--------------------|-----------------------------|---------------------------------------------|
-| `QUACK_SERVER_URL` | `http://127.0.0.1:7474`     | Loopback default for `docker compose up`.   |
-| `QUACK_TOKEN`      | *(no default)*              | Per-workspace token. Absence = no connect.  |
+```json
+{ "mcpServers": { "quack": {
+    "type": "http",
+    "url": "http://127.0.0.1:7474/mcp",
+    "headers": {
+      "Authorization": "Bearer <per-workspace token>",
+      "X-Quack-Sub-Project": "<sub-project slug>"
+} } } }
+```
 
-Hooks read the same two variables plus an optional `QUACK_PROJECT_SLUG`.
+Claude Code reads `.mcp.json` natively on session start — so after
+`/quack:install` you only need to **restart the Claude Code session
+once** for the new MCP server to load.
 
-> **`QUACK_TOKEN` has no default — intentionally.** When unset, Claude
-> Code's MCP layer substitutes the variable with an empty string and the
-> `Authorization: Bearer ` header reaches the server with no credential
-> attached; the server rejects the request with `401` and Claude Code
-> surfaces a one-time "MCP server failed to connect" error. That is the
-> intended UX — it prompts the user to run `/quack:install <slug>` for the
-> workspace. **If you see that error**, run `/quack:install` first, then
-> restart your Claude Code session (so direnv re-exports the new env).
+### Committed-token tradeoff
+
+The `Authorization` header holds a **literal**, **non-admin**,
+single-project token: it cannot mint or revoke other tokens and is scoped
+to one project. Because the token's blast radius is that small, for the
+MVP `.mcp.json` is **committed by default** — checked into the workspace
+repo so the install stays a single step. The **post-MVP** path replaces
+the literal token with a `${QUACK_TOKEN}` substitution reference (the
+value comes from the environment at session start) and adds `.mcp.json`
+to `.gitignore`, keeping the secret out of source control.
 
 ## Why an admin token?
 
@@ -119,7 +127,7 @@ Hooks read the same two variables plus an optional `QUACK_PROJECT_SLUG`.
 tools (`create_project`, `register_user`, `add_member`). That is a
 **privileged** operation — we keep it gated behind a separately-held
 `QUACK_ADMIN_TOKEN` env var rather than baking it into the plugin config.
-Per-workspace tokens are non-admin and safe to drop into `.envrc`.
+Per-workspace tokens are non-admin and safe to write into `.mcp.json`.
 
 ## Manual smoke (AC-ZSN2GG.11)
 
@@ -152,10 +160,11 @@ add <quack-repo> && claude plugin install quack@quack`):
   ([https://bun.sh](https://bun.sh)) so per-workspace memory hooks can
   fire.
 - **MCP server fails to connect after `claude plugin install`** — usually means
-  `QUACK_TOKEN` is unset. `/quack:install <slug>` mints one.
+  the workspace has no `.mcp.json` yet. Run `/quack:install <slug>` to
+  write one, then restart the Claude Code session.
 - **Hooks fire but nothing lands in Neo4j** — tail
   `docker compose logs -f quack` for `ingest_envelope_rejected` lines. The
-  most common cause is a stale `QUACK_TOKEN` after a token rotation.
+  most common cause is a stale token in `.mcp.json` after a token rotation.
 
 ## See also
 
