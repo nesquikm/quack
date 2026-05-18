@@ -44,7 +44,6 @@ describe("plugin install — source-tree invariants (always)", () => {
       "hooks/session_start.sh",
       "hooks/stop.sh",
       "hooks/post_tool_use.sh",
-      "mcp-servers/quack.json",
       "commands/quack-install.md",
       "README.md",
       // AC-44QGKH.8 — _lib/ now lives inside the plugin tree (hermetic).
@@ -62,6 +61,13 @@ describe("plugin install — source-tree invariants (always)", () => {
     for (const rel of required) {
       expect(existsSync(join(PLUGIN_DIR, rel)), `missing ${rel}`).toBe(true);
     }
+  });
+
+  test("AC-55S220.4 — plugin source no longer ships mcp-servers/quack.json", () => {
+    // The Quack MCP server is declared only by the .mcp.json that
+    // /quack:install writes — the plugin ships no MCP declaration.
+    expect(existsSync(join(PLUGIN_DIR, "mcp-servers/quack.json"))).toBe(false);
+    expect(existsSync(join(PLUGIN_DIR, "mcp-servers"))).toBe(false);
   });
 
   test("plugin source forbids server / repo-level files", () => {
@@ -85,7 +91,8 @@ describe("plugin install — source-tree invariants (always)", () => {
   });
 
   test("plugin source top-level entries are restricted to the documented set", () => {
-    const allowed = new Set([".claude-plugin", "hooks", "mcp-servers", "commands", "README.md"]);
+    // AC-55S220.4 — `mcp-servers` is no longer a permitted top-level entry.
+    const allowed = new Set([".claude-plugin", "hooks", "commands", "README.md"]);
     const entries = readdirSync(PLUGIN_DIR);
     for (const entry of entries) {
       if (entry.startsWith(".") && entry !== ".claude-plugin") continue;
@@ -151,7 +158,6 @@ describe("plugin install — real CLI round-trip (opt-in)", () => {
         "hooks/session_start.sh",
         "hooks/stop.sh",
         "hooks/post_tool_use.sh",
-        "mcp-servers/quack.json",
         "commands/quack-install.md",
         "README.md",
         // AC-44QGKH.8 — _lib/ must be installed alongside the shims.

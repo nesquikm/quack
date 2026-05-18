@@ -21,7 +21,8 @@ claude plugin install quack@quack
 cd <your-workspace>
 export QUACK_ADMIN_TOKEN=<admin-token-from-first-boot>
 /quack:install <slug>
-direnv allow
+# /quack:install writes a project-scoped .mcp.json — restart your
+# Claude Code session once so it picks up the new MCP server.
 ```
 
 Full walkthrough: [`plugins/quack/README.md`](plugins/quack/README.md). Operators

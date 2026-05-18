@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Cross-AC direct coverage for files that other plugin tests reach only
@@ -33,23 +33,30 @@ describe("AC-ZSN2GG.3 — plugins/quack/hooks/hooks.json registers all three eve
   });
 });
 
-describe("AC-ZSN2GG.4 — mcp-servers/quack.json shape", () => {
-  test("declares http transport with env-substituted url and bearer header", () => {
-    const raw = readFileSync(join(REPO_ROOT, "plugins/quack/mcp-servers/quack.json"), "utf8");
-    const cfg = JSON.parse(raw) as {
-      type: string;
-      url: string;
-      headers: Record<string, string>;
-    };
-    expect(cfg.type).toBe("http");
-    // Default fallback for local docker compose; absence of QUACK_SERVER_URL
-    // must not block plugin install.
-    expect(cfg.url).toContain("${QUACK_SERVER_URL:-http://127.0.0.1:7474}");
-    expect(cfg.url.endsWith("/mcp")).toBe(true);
-    // QUACK_TOKEN has *no* default — absence surfaces as a one-time MCP
-    // connect error that prompts the user to run /quack:install.
-    expect(cfg.headers["Authorization"]).toBe("Bearer ${QUACK_TOKEN}");
-    expect(cfg.url.includes("${QUACK_TOKEN:-")).toBe(false);
+describe("AC-55S220.4 — plugins/quack/mcp-servers/quack.json is deleted", () => {
+  test("the plugin no longer ships mcp-servers/quack.json", () => {
+    // FR-55S220 removes the plugin-declared MCP server. The Quack MCP
+    // server is declared ONLY by the project-scoped .mcp.json that
+    // /quack:install writes — there is exactly one declaration.
+    expect(existsSync(join(REPO_ROOT, "plugins/quack/mcp-servers/quack.json"))).toBe(false);
+  });
+
+  test("the plugin no longer ships an mcp-servers/ directory", () => {
+    expect(existsSync(join(REPO_ROOT, "plugins/quack/mcp-servers"))).toBe(false);
+  });
+
+  test("plugin.json carries no reference to mcp-servers/quack.json", () => {
+    const manifest = readFileSync(join(REPO_ROOT, "plugins/quack/.claude-plugin/plugin.json"), "utf8");
+    expect(manifest).not.toContain("mcp-servers");
+    expect(manifest).not.toContain("quack.json");
+  });
+
+  test("plugins/quack/README.md no longer references mcp-servers/quack.json", () => {
+    // The "What this plugin ships" directory-tree diagram must not list the
+    // removed `mcp-servers/quack.json` — the server is declared only by the
+    // project-scoped `.mcp.json` that /quack:install writes.
+    const body = readFileSync(join(REPO_ROOT, "plugins/quack/README.md"), "utf8");
+    expect(body).not.toContain("mcp-servers/quack.json");
   });
 });
 

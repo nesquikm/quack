@@ -10,8 +10,10 @@ export interface DispatchOptions {
   kind: string;
   // The JSON-parsed payload read from stdin.
   payload: unknown;
-  // Test seams.
-  env?: Record<string, string | undefined>;
+  // Test seam — directory to begin the `.mcp.json` walk-up from. The
+  // production path passes no `dir`, so the runtime walk starts at
+  // `CLAUDE_PROJECT_DIR` (falling back to cwd).
+  dir?: string;
   fetchImpl?: FetchLike;
   now?: () => Date;
 }
@@ -20,19 +22,20 @@ export async function dispatchHook(opts: DispatchOptions): Promise<{ posted: boo
   if (!KNOWN_KINDS.has(opts.kind)) {
     return { posted: false, reason: "unknown_kind" };
   }
-  const cfg = resolveConfig(opts.env as Parameters<typeof resolveConfig>[0]);
+  const startDir = opts.dir ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const cfg = resolveConfig({ startDir });
   if (!cfg) {
     return { posted: false, reason: "no_token" };
   }
   if (opts.payload === undefined || opts.payload === null) {
     return { posted: false, reason: "no_payload" };
   }
-  const redactor = buildHookRedactor(opts.env ?? Bun.env);
+  const redactor = buildHookRedactor(Bun.env);
   const { value: redactedPayload } = redactor.redact(opts.payload as Record<string, unknown>);
   const envelope: HookEnvelope = {
     kind: opts.kind as HookEnvelope["kind"],
     payload: redactedPayload as Record<string, unknown>,
-    ...(cfg.projectSlug ? { project_slug: cfg.projectSlug } : {}),
+    ...(cfg.subProject ? { sub_project: cfg.subProject as string } : {}),
     ts: (opts.now ?? (() => new Date()))().toISOString(),
   };
   await postEnvelope(envelope, {
