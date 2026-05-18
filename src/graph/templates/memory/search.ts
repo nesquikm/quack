@@ -16,6 +16,7 @@ export const searchMemoryTemplate: CypherTemplate = {
 CALL db.index.fulltext.queryNodes('entity_name_fts', $query) YIELD node, score
 WITH node, score
 WHERE node.project_id = $project_id
+  AND ($sub_projects = [] OR node.source IS NULL OR ANY(s IN $sub_projects WHERE s IN node.source))
 WITH node, score
 ORDER BY score DESC, node.created_at DESC
 LIMIT $limit
@@ -29,6 +30,7 @@ RETURN
     query: z.string().min(1),
     limit: z.number().int().positive().max(100).default(20),
     project_id: z.number().optional(),
+    sub_projects: z.array(z.string()).default([]),
   }),
   accessMode: "READ",
 };
@@ -41,7 +43,8 @@ export const searchMemoryExpandTemplate: CypherTemplate = {
 MATCH (anchor {project_id: $project_id})
 WHERE anchor.id IN $anchor_ids
 MATCH (anchor)-[r]-(n {project_id: $project_id})
-WHERE size($types) = 0 OR any(t IN $types WHERE t IN labels(n))
+WHERE (size($types) = 0 OR any(t IN $types WHERE t IN labels(n)))
+  AND ($sub_projects = [] OR n.source IS NULL OR ANY(s IN $sub_projects WHERE s IN n.source))
 RETURN
   labels(n)[0]      AS label,
   properties(n)     AS props,
@@ -54,6 +57,7 @@ LIMIT $limit
     types: z.array(z.string()).default([]),
     limit: z.number().int().positive().max(200).default(50),
     project_id: z.number().optional(),
+    sub_projects: z.array(z.string()).default([]),
   }),
   accessMode: "READ",
 };

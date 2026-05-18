@@ -196,4 +196,43 @@ describe("memory tools — cross-tenant isolation (integration)", () => {
 
     db.close();
   });
+
+  // AC-A9BN0M.8 — `sub_projects` is an opaque non-security label. A token for
+  // project A passing `sub_projects` that names a project-B sub-project still
+  // returns only project-A nodes — the $project_id bind is unaffected.
+  test("AC-A9BN0M.8: sub_projects filter cannot widen a query past $project_id", async () => {
+    if (!dockerOk || !adapter || !driver) return;
+
+    // Seed: project A has a tagged 'crosstag' entity (source=['a-repo']);
+    // project B has a same-named entity tagged with 'b-repo'.
+    const session = driver.session({ database: "neo4j" });
+    try {
+      await session.run(`
+        MERGE (a:Entity {project_id: 1001, name: 'crosstag'})
+        ON CREATE SET a.id = 'crosstag-a', a.kind = 'library', a.created_at = datetime(), a.source = ['a-repo']
+        MERGE (b:Entity {project_id: 2002, name: 'crosstag'})
+        ON CREATE SET b.id = 'crosstag-b', b.kind = 'library', b.created_at = datetime(), b.source = ['b-repo']
+      `);
+    } finally {
+      await session.close();
+    }
+
+    // Project A's token names project B's sub-project tag. The result set
+    // stays within project A — B's node is never reachable.
+    const out = await searchMemory(
+      { entities: ["crosstag"], types: ["Entity"], mode: "templates", limit: 20, sub_projects: ["b-repo"] },
+      ctxA,
+      adapter,
+    );
+    expect(out.results.every((r) => r.project_id === ctxA.project_id)).toBe(true);
+    expect(out.results.some((r) => r.id === "crosstag-b")).toBe(false);
+
+    // Project A naming its own tag finds its own node.
+    const own = await searchMemory(
+      { entities: ["crosstag"], types: ["Entity"], mode: "templates", limit: 20, sub_projects: ["a-repo"] },
+      ctxA,
+      adapter,
+    );
+    expect(own.results.some((r) => r.id === "crosstag-a")).toBe(true);
+  });
 });

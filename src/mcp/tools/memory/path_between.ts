@@ -1,13 +1,14 @@
 import { z } from "zod";
 import type { GraphAdapter } from "../../../graph/adapter";
 import type { NodeKind } from "../../memory/dto";
-import { assertGraph, buildEnvelope, checkMode, modeSchema, type AuthContext, type MemoryEnvelope } from "./_shared";
+import { assertGraph, buildEnvelope, checkMode, modeSchema, subProjectsSchema, type AuthContext, type MemoryEnvelope } from "./_shared";
 
 export const pathBetweenSchema = z.object({
   node_a: z.string().min(1),
   node_b: z.string().min(1),
   max_hops: z.number().int().positive().max(8).optional().default(5),
   limit: z.number().int().positive().max(100).optional().default(25),
+  sub_projects: subProjectsSchema,
   mode: modeSchema,
 });
 
@@ -28,11 +29,17 @@ export async function pathBetween(
   checkMode(args.mode);
 
   const res = await graph.run<
-    { node_a: string; node_b: string; max_hops: number; limit: number },
+    { node_a: string; node_b: string; max_hops: number; limit: number; sub_projects: string[] },
     PathResult
   >(
     "memory.path",
-    { node_a: args.node_a, node_b: args.node_b, max_hops: args.max_hops, limit: args.limit },
+    {
+      node_a: args.node_a,
+      node_b: args.node_b,
+      max_hops: args.max_hops,
+      limit: args.limit,
+      sub_projects: args.sub_projects ?? [],
+    },
     ctx,
   );
 

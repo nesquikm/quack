@@ -124,4 +124,48 @@ describe("handleIngest", () => {
       expect(parsed.success).toBe(true);
     }
   });
+
+  // AC-A9BN0M.1 — sub_project flows through the ingest handler. Absent is
+  // valid; a slug-shaped value is accepted; a malformed value ⇒ 400
+  // invalid_envelope with path ["sub_project"].
+  test("AC-A9BN0M.1: absent sub_project → 202 accepted", async () => {
+    const db = seededDb();
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+    const res = await handleIngest(postRequest({ kind: "stop", payload: {} }), adminCtx, { queue, db });
+    expect(res.status).toBe(202);
+  });
+
+  test("AC-A9BN0M.1: slug-shaped sub_project → 202 accepted", async () => {
+    const db = seededDb();
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+    const res = await handleIngest(
+      postRequest({ kind: "stop", payload: {}, sub_project: "backend-api" }),
+      adminCtx,
+      { queue, db },
+    );
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.accepted).toBe(true);
+  });
+
+  test("AC-A9BN0M.1: malformed sub_project → 400 invalid_envelope path ['sub_project']", async () => {
+    const db = seededDb();
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+    const res = await handleIngest(
+      postRequest({ kind: "stop", payload: {}, sub_project: "Bad Slug!" }),
+      adminCtx,
+      { queue, db },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.error).toBe("invalid_envelope");
+    expect(body.path).toContain("sub_project");
+    // Malformed envelope must not enqueue.
+    expect(queue.getDepth()).toBe(0);
+  });
+
+  test("AC-A9BN0M.1: HookEnvelopeSchema accepts an optional sub_project", () => {
+    expect(HookEnvelopeSchema.safeParse({ kind: "stop", payload: {}, sub_project: "frontend" }).success).toBe(true);
+    expect(HookEnvelopeSchema.safeParse({ kind: "stop", payload: {}, sub_project: "UPPER" }).success).toBe(false);
+  });
 });

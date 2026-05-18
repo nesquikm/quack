@@ -3,13 +3,14 @@ import type { GraphAdapter } from "../../../graph/adapter";
 import { nodeToMemoryItem, type MemoryItem, type NodeKind } from "../../memory/dto";
 import { parseTimeWindow, TimeWindowError } from "../../memory/time_window";
 import { MemoryToolError } from "../../errors";
-import { assertGraph, buildEnvelope, checkMode, modeSchema, type AuthContext, type MemoryEnvelope } from "./_shared";
+import { assertGraph, buildEnvelope, checkMode, modeSchema, subProjectsSchema, type AuthContext, type MemoryEnvelope } from "./_shared";
 
 export const searchMemorySchema = z.object({
   entities: z.array(z.string().min(1)).min(1),
   types: z.array(z.string()).optional(),
   time_range: z.union([z.string(), z.object({ from: z.string(), to: z.string().optional() })]).optional(),
   limit: z.number().int().positive().max(100).optional().default(20),
+  sub_projects: subProjectsSchema,
   mode: modeSchema,
 });
 
@@ -50,10 +51,12 @@ export async function searchMemory(
     return buildEnvelope<MemoryItem>([], { matched_entities: 0, traversals: 0, truncated: false }, ["no_full_text_match"]);
   }
 
+  const subProjects = args.sub_projects ?? [];
+
   const fts = await graph.run<
-    { query: string; limit: number },
+    { query: string; limit: number; sub_projects: string[] },
     { label: NodeKind; props: Record<string, unknown>; score: number; neighbor: boolean }
-  >("memory.search", { query, limit: args.limit }, ctx);
+  >("memory.search", { query, limit: args.limit, sub_projects: subProjects }, ctx);
 
   if (fts.rows.length === 0) {
     return buildEnvelope<MemoryItem>(
@@ -72,11 +75,11 @@ export async function searchMemory(
       .filter((v): v is string => typeof v === "string");
     if (anchor_ids.length > 0) {
       const expand = await graph.run<
-        { anchor_ids: string[]; types: string[]; limit: number },
+        { anchor_ids: string[]; types: string[]; limit: number; sub_projects: string[] },
         { label: NodeKind; props: Record<string, unknown>; score: number; neighbor: boolean }
       >(
         "memory.search.expand",
-        { anchor_ids, types: args.types, limit: args.limit },
+        { anchor_ids, types: args.types, limit: args.limit, sub_projects: subProjects },
         ctx,
       );
       neighbors = expand.rows.filter((r) => KNOWN_LABELS.has(r.label));

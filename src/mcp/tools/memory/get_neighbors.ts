@@ -1,13 +1,14 @@
 import { z } from "zod";
 import type { GraphAdapter } from "../../../graph/adapter";
 import { nodeToMemoryItem, type MemoryItem, type NodeKind } from "../../memory/dto";
-import { assertGraph, buildEnvelope, checkMode, modeSchema, type AuthContext, type MemoryEnvelope } from "./_shared";
+import { assertGraph, buildEnvelope, checkMode, modeSchema, subProjectsSchema, type AuthContext, type MemoryEnvelope } from "./_shared";
 
 export const getNeighborsSchema = z.object({
   node_id: z.string().min(1),
   depth: z.number().int().positive().max(3).optional().default(1),
   edge_types: z.array(z.string()).optional().default([]),
   limit: z.number().int().positive().max(200).optional().default(50),
+  sub_projects: subProjectsSchema,
   mode: modeSchema,
 });
 
@@ -24,7 +25,7 @@ export async function getNeighbors(
   checkMode(args.mode);
 
   const res = await graph.run<
-    { node_id: string; depth: number; edge_types: string[]; limit: number },
+    { node_id: string; depth: number; edge_types: string[]; limit: number; sub_projects: string[] },
     { label: NodeKind; props: Record<string, unknown>; hops: number }
   >(
     "memory.neighbors",
@@ -33,6 +34,7 @@ export async function getNeighbors(
       depth: args.depth,
       edge_types: args.edge_types,
       limit: args.limit,
+      sub_projects: args.sub_projects ?? [],
     },
     ctx,
   );

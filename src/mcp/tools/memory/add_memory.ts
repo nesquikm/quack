@@ -20,6 +20,9 @@ export type AddMemoryArgs = z.infer<typeof addMemorySchema>;
 export interface AddMemoryDeps {
   queue: BoundedQueue<QueuedEnvelope>;
   db: Database;
+  // AC-A9BN0M.7: the sub-project the MCP request path resolved from the
+  // X-Quack-Sub-Project header (already validated). Absent ⇒ envelope omits it.
+  sub_project?: string;
 }
 
 export interface AddMemoryResult {
@@ -49,6 +52,8 @@ export async function addMemory(
     ctx,
     queued_at: queuedAt,
     project_slug: projectSlug,
+    // AC-A9BN0M.7: stamp the resolved sub-project; omitted when deps carry none.
+    ...(deps.sub_project !== undefined ? { sub_project: deps.sub_project } : {}),
   };
 
   const ok = deps.queue.enqueue(envelope);

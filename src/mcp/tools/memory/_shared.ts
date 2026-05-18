@@ -3,6 +3,7 @@ import type { GraphAdapter } from "../../../graph/adapter";
 import type { AuthContext } from "../../../auth/middleware";
 import { MemoryToolError, ERR_NOT_IMPLEMENTED_YET, ERR_NO_GRAPH_ADAPTER } from "../../errors";
 import { buildEnvelope, type MemoryEnvelope } from "../../memory/coverage";
+import { SLUG_RE } from "../../../shared/slug";
 
 // Shared bits across the four memory tools:
 //  - mode field (templates | planned; v1 rejects planned with not_implemented_yet)
@@ -10,6 +11,11 @@ import { buildEnvelope, type MemoryEnvelope } from "../../memory/coverage";
 //  - envelope-building convenience
 
 export const modeSchema = z.enum(["templates", "planned"]).optional().default("templates");
+
+// Optional cross-project recall narrowing (AC-A9BN0M.5). Each element is a
+// slug-shaped sub-project name. Absent OR empty array ⇒ whole-project recall.
+const subProjectSlug = z.string().regex(SLUG_RE);
+export const subProjectsSchema = z.array(subProjectSlug).optional();
 
 export function assertGraph(graph: GraphAdapter | undefined): asserts graph is GraphAdapter {
   if (!graph) {

@@ -3,11 +3,10 @@ import type { Database } from "bun:sqlite";
 import type { AuthContext } from "../../auth/middleware";
 import { AdminToolError } from "../errors";
 import { projectToDto, type ProjectDto, type ProjectRow } from "../dto";
-
-const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+import { SLUG_RE, SLUG_RE_DESCRIPTION } from "../../shared/slug";
 
 export const createProjectSchema = z.object({
-  slug: z.string().regex(SLUG_RE, "slug must match /^[a-z0-9][a-z0-9_-]{0,62}$/"),
+  slug: z.string().regex(SLUG_RE, `slug must match ${SLUG_RE_DESCRIPTION}`),
   display_name: z.string().min(1).max(128),
 });
 

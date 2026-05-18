@@ -18,10 +18,20 @@ export const HookKindSchema = z.enum([
   "explicit_add",
 ]);
 
+// Project-slug shape, shared with the admin create_project tool
+// (src/admin/tools/create_project.ts). A `sub_project` names a logical
+// sub-project within a workspace's memory project; M3/M4-era hook clients
+// omit it entirely, so the field is optional.
+export const SUB_PROJECT_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+
 export const HookEnvelopeSchema = z.object({
   kind: HookKindSchema,
   payload: z.record(z.string(), z.unknown()),
   project_slug: z.string().optional(),
+  sub_project: z
+    .string()
+    .regex(SUB_PROJECT_RE, "sub_project must match /^[a-z0-9][a-z0-9_-]{0,62}$/")
+    .optional(),
   ts: z.string().optional(),
 });
 
