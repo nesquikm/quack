@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "quack",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "source": "./plugins/quack/",
       "description": "Self-hosted Claude Code memory: hooks + MCP tools backed by Neo4j. Pair with the Quack server (docker compose stack in the same repo).",
       "category": "memory",
