@@ -12,9 +12,11 @@ MERGE (s:Symbol {project_id: $project_id, name: $name, file_id: $file_id})
 ON CREATE SET
   s.id = randomUUID(),
   s.kind = $kind,
-  s.created_at = $now
+  s.created_at = $now,
+  s.source = $source
 ON MATCH SET
-  s.kind = coalesce(s.kind, $kind)
+  s.kind = coalesce(s.kind, $kind),
+  s.source = $source + [src IN coalesce(s.source, []) WHERE NOT src IN $source]
 RETURN s.id AS id, s.name AS name, s.file_id AS file_id, s.project_id AS project_id
 `,
   paramSchema: z.object({
@@ -22,6 +24,7 @@ RETURN s.id AS id, s.name AS name, s.file_id AS file_id, s.project_id AS project
     file_id: z.string().min(1),
     kind: z.string().min(1),
     now: z.string().min(1),
+    source: z.array(z.string()).default([]),
     project_id: z.number().optional(),
   }),
   accessMode: "WRITE",

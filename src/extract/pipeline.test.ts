@@ -6,6 +6,8 @@ import { Neo4jGraphAdapter } from "../graph/adapter";
 import { runMigrations } from "../graph/migrations";
 import { runMigrations as runSqliteMigrations } from "../auth/sqlite/schema";
 import { registerExtractTemplates } from "../graph/templates/extract/index";
+import { registerMemoryTemplates } from "../graph/templates/memory/index";
+import { searchMemory } from "../mcp/tools/memory/search_memory";
 import { writeExtraction } from "./writer";
 import { createRedactor } from "./redact";
 import { BoundedQueue } from "./queue";
@@ -37,6 +39,7 @@ beforeAll(async () => {
   });
   await runMigrations(driver);
   registerExtractTemplates();
+  registerMemoryTemplates();
 }, 180_000);
 
 afterAll(async () => {
@@ -281,5 +284,102 @@ describe("extraction pipeline e2e (integration)", () => {
       await consumer.stop("test");
       db.close();
     }
+  });
+
+  // AC-A9BN0M.9 e2e — two envelopes carrying two distinct sub_project values
+  // accumulate `source` arrays on the graph; a sub_projects-filtered
+  // search_memory narrows the result set; an unfiltered query spans both.
+  test("AC-A9BN0M.9: two sub_project envelopes accumulate source; sub_projects filter narrows recall", async () => {
+    if (!dockerOk || !driver) return;
+    const adapter = new Neo4jGraphAdapter(driver);
+    const ctxSp: AuthContext = { user_id: 3, project_id: 70808, role: "admin" };
+
+    // Envelope 1: sub_project "backend" mentions a shared entity + a
+    // backend-only entity.
+    await writeExtraction(
+      adapter,
+      ctxSp,
+      {
+        entities: [
+          { name: "sp-shared", kind: "library" },
+          { name: "sp-backend-only", kind: "library" },
+        ],
+        decisions: [],
+        files: [],
+        symbols: [],
+        feedbacks: [],
+        relations: [],
+      },
+      new Date().toISOString(),
+      { sub_project: "backend" },
+    );
+
+    // Envelope 2: sub_project "frontend" mentions the SAME shared entity +
+    // a frontend-only entity.
+    await writeExtraction(
+      adapter,
+      ctxSp,
+      {
+        entities: [
+          { name: "sp-shared", kind: "library" },
+          { name: "sp-frontend-only", kind: "library" },
+        ],
+        decisions: [],
+        files: [],
+        symbols: [],
+        feedbacks: [],
+        relations: [],
+      },
+      new Date().toISOString(),
+      { sub_project: "frontend" },
+    );
+
+    // The shared entity stays ONE node with a two-element source.
+    const session = driver.session({ database: "neo4j" });
+    try {
+      const shared = await session.run(
+        `MATCH (e:Entity {project_id: $pid, name: 'sp-shared'}) RETURN e.source AS source, count(*) AS c`,
+        { pid: neo4j.int(ctxSp.project_id) },
+      );
+      const cVal = shared.records[0]?.get("c");
+      expect(typeof cVal === "number" ? cVal : (cVal as { toNumber(): number }).toNumber()).toBe(1);
+      const src = shared.records[0]?.get("source") as string[];
+      expect([...src].sort()).toEqual(["backend", "frontend"]);
+
+      const backendOnly = await session.run(
+        `MATCH (e:Entity {project_id: $pid, name: 'sp-backend-only'}) RETURN e.source AS source`,
+        { pid: neo4j.int(ctxSp.project_id) },
+      );
+      expect(backendOnly.records[0]?.get("source") as string[]).toEqual(["backend"]);
+    } finally {
+      await session.close();
+    }
+
+    // Unfiltered search spans the whole project — both per-repo entities show.
+    const all = await searchMemory(
+      { entities: ["sp-backend-only", "sp-frontend-only", "sp-shared"], mode: "templates", limit: 50 },
+      ctxSp,
+      adapter,
+    );
+    const allNames = new Set(all.results.map((r) => (r.kind === "Entity" ? r.name : "")));
+    expect(allNames.has("sp-backend-only")).toBe(true);
+    expect(allNames.has("sp-frontend-only")).toBe(true);
+
+    // A sub_projects: ['backend'] filter narrows — the frontend-only entity
+    // drops; the shared (multi-source) entity stays.
+    const filtered = await searchMemory(
+      {
+        entities: ["sp-backend-only", "sp-frontend-only", "sp-shared"],
+        mode: "templates",
+        limit: 50,
+        sub_projects: ["backend"],
+      },
+      ctxSp,
+      adapter,
+    );
+    const filteredNames = new Set(filtered.results.map((r) => (r.kind === "Entity" ? r.name : "")));
+    expect(filteredNames.has("sp-backend-only")).toBe(true);
+    expect(filteredNames.has("sp-shared")).toBe(true);
+    expect(filteredNames.has("sp-frontend-only")).toBe(false);
   });
 });

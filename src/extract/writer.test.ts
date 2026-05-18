@@ -105,4 +105,114 @@ describe("writeExtraction", () => {
     expect(entityCall!.params["name"]).toBe("authmw");
     expect(entityCall!.params["aliases"]).toEqual(["auth-mw"]);
   });
+
+  // AC-A9BN0M.4 — the writer resolves the sub-project and threads it as
+  // `$source` (a single-element array, or [] when absent) into every
+  // node-upsert GraphAdapter.run call.
+  const NODE_TEMPLATES = [
+    "extract.upsert_entity",
+    "extract.upsert_decision",
+    "extract.upsert_file",
+    "extract.upsert_symbol",
+    "extract.upsert_feedback",
+  ];
+
+  test("AC-A9BN0M.4: every node-upsert call receives source: [sub_project]", async () => {
+    const { adapter, calls } = fakeAdapter({});
+    await writeExtraction(
+      adapter,
+      ctxA,
+      makeResult({
+        entities: [{ name: "auth", kind: "library" }],
+        files: [{ path: "src/x.ts" }],
+        symbols: [{ name: "foo", file_path: "src/x.ts", kind: "function" }],
+        decisions: [{ summary: "use Bun", source_excerpt: "" }],
+        feedbacks: [{ body: "I like it" }],
+      }),
+      "2026-05-13T00:00:00Z",
+      { sub_project: "backend" },
+    );
+    const nodeCalls = calls.filter((c) => NODE_TEMPLATES.includes(c.templateId));
+    expect(nodeCalls.length).toBeGreaterThanOrEqual(5);
+    for (const c of nodeCalls) {
+      expect(c.params["source"], `${c.templateId} must carry source`).toEqual(["backend"]);
+    }
+  });
+
+  test("AC-A9BN0M.4: absent sub_project ⇒ node-upsert calls carry source: []", async () => {
+    const { adapter, calls } = fakeAdapter({});
+    await writeExtraction(
+      adapter,
+      ctxA,
+      makeResult({ entities: [{ name: "auth", kind: "library" }] }),
+      "2026-05-13T00:00:00Z",
+    );
+    const entityCall = calls.find((c) => c.templateId === "extract.upsert_entity");
+    expect(entityCall!.params["source"]).toEqual([]);
+  });
+
+  test("AC-A9BN0M.4: a non-conforming sub_project is dropped to source: []", async () => {
+    const { adapter, calls } = fakeAdapter({});
+    await writeExtraction(
+      adapter,
+      ctxA,
+      makeResult({ entities: [{ name: "auth", kind: "library" }] }),
+      "2026-05-13T00:00:00Z",
+      { sub_project: "Bad Slug!" },
+    );
+    const entityCall = calls.find((c) => c.templateId === "extract.upsert_entity");
+    // Writer re-validates against the slug regex; a malformed value ⇒ [].
+    expect(entityCall!.params["source"]).toEqual([]);
+  });
+
+  test("AC-A9BN0M.4: relation calls never carry a source param", async () => {
+    const { adapter, calls } = fakeAdapter({});
+    await writeExtraction(
+      adapter,
+      ctxA,
+      makeResult({
+        entities: [{ name: "auth", kind: "library" }],
+        files: [{ path: "src/x.ts" }],
+        relations: [
+          { type: "MENTIONS", from: { kind: "Entity", name: "auth" }, to: { kind: "File", name: "src/x.ts" } },
+        ],
+      }),
+      "2026-05-13T00:00:00Z",
+      { sub_project: "backend" },
+    );
+    const relCall = calls.find((c) => c.templateId === "extract.upsert_relation");
+    expect(relCall).toBeDefined();
+    expect(relCall!.params["source"]).toBeUndefined();
+  });
+
+  test("AC-A9BN0M.4: set-union idempotency — same sub-project twice keeps source single-valued", async () => {
+    const { adapter, calls } = fakeAdapter({});
+    const result = makeResult({ entities: [{ name: "auth", kind: "library" }] });
+    await writeExtraction(adapter, ctxA, result, "2026-05-13T00:00:00Z", { sub_project: "backend" });
+    await writeExtraction(adapter, ctxA, result, "2026-05-13T00:00:00Z", { sub_project: "backend" });
+    const entityCalls = calls.filter((c) => c.templateId === "extract.upsert_entity");
+    expect(entityCalls.length).toBe(2);
+    // Both calls thread the same single-element source array — the graph-side
+    // set-union (tested against Neo4j in upsert_source.test.ts) collapses them.
+    for (const c of entityCalls) {
+      expect(c.params["source"]).toEqual(["backend"]);
+    }
+  });
+
+  test("AC-A9BN0M.4: sub_project is NOT routed through the project_id override path", async () => {
+    // The sub-project is a distinct trusted-input field; the writer never
+    // passes a model-supplied project_id. project_id stays absent from the
+    // params the writer hands the adapter (the adapter clobbers it from ctx).
+    const { adapter, calls } = fakeAdapter({});
+    await writeExtraction(
+      adapter,
+      ctxA,
+      makeResult({ entities: [{ name: "auth", kind: "library" }] }),
+      "2026-05-13T00:00:00Z",
+      { sub_project: "backend" },
+    );
+    const entityCall = calls.find((c) => c.templateId === "extract.upsert_entity");
+    expect(entityCall!.params["source"]).toEqual(["backend"]);
+    expect(entityCall!.params["project_id"]).toBeUndefined();
+  });
 });

@@ -15,6 +15,7 @@ MATCH (start {project_id: $project_id, id: $node_id})
 MATCH p = (start)-[*1..3]-(n {project_id: $project_id})
 WHERE length(p) <= $depth
   AND (size($edge_types) = 0 OR all(r IN relationships(p) WHERE type(r) IN $edge_types))
+  AND ($sub_projects = [] OR n.source IS NULL OR ANY(s IN $sub_projects WHERE s IN n.source))
 RETURN DISTINCT
   labels(n)[0]      AS label,
   properties(n)     AS props,
@@ -28,6 +29,7 @@ LIMIT $limit
     edge_types: z.array(z.string()).default([]),
     limit: z.number().int().positive().max(200).default(50),
     project_id: z.number().optional(),
+    sub_projects: z.array(z.string()).default([]),
   }),
   accessMode: "READ",
 };

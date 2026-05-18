@@ -10,15 +10,18 @@ MERGE (fb:Feedback {project_id: $project_id, body: $body})
 ON CREATE SET
   fb.id = randomUUID(),
   fb.sentiment = $sentiment,
-  fb.observed_at = $now
+  fb.observed_at = $now,
+  fb.source = $source
 ON MATCH SET
-  fb.sentiment = coalesce(fb.sentiment, $sentiment)
+  fb.sentiment = coalesce(fb.sentiment, $sentiment),
+  fb.source = $source + [s IN coalesce(fb.source, []) WHERE NOT s IN $source]
 RETURN fb.id AS id, fb.body AS body, fb.project_id AS project_id
 `,
   paramSchema: z.object({
     body: z.string().min(1),
     sentiment: z.string().nullable().optional(),
     now: z.string().min(1),
+    source: z.array(z.string()).default([]),
     project_id: z.number().optional(),
   }),
   accessMode: "WRITE",

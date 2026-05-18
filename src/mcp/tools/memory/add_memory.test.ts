@@ -155,6 +155,37 @@ describe("add_memory (unit)", () => {
     // No info-level counter for drops — only successful enqueues are tracked here.
     expect(snap.errors.by_category["explicit_add_received"] ?? 0).toBe(0);
   });
+
+  // AC-A9BN0M.7 — add_memory stamps the sub-project the MCP request path
+  // resolved from the X-Quack-Sub-Project header. The handler receives the
+  // already-resolved value via its deps; a valid value lands on the synthetic
+  // envelope's `sub_project` field; an absent value omits it.
+  test("AC-A9BN0M.7: a resolved sub_project is stamped onto the synthetic envelope", async () => {
+    const db = seededDb();
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+    await addMemory({ content: "remember" }, adminCtx, { queue, db, sub_project: "backend" });
+    const env = queue.dequeue()!;
+    expect(env.kind).toBe("explicit_add");
+    expect((env as unknown as { sub_project?: string }).sub_project).toBe("backend");
+  });
+
+  test("AC-A9BN0M.7: absent sub_project ⇒ envelope carries no sub_project", async () => {
+    const db = seededDb();
+    const queue = new BoundedQueue<QueuedEnvelope>(10);
+    await addMemory({ content: "remember" }, adminCtx, { queue, db });
+    const env = queue.dequeue()!;
+    expect((env as unknown as { sub_project?: string }).sub_project).toBeUndefined();
+  });
+
+  test("AC-A9BN0M.7: add_memory Zod arg schema is unchanged — no sub_project tool argument", () => {
+    // The model never supplies the tag. A `sub_project` arg is silently
+    // ignored — the schema's surface is still { content }.
+    const parsed = addMemorySchema.safeParse({ content: "hi", sub_project: "backend" });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect((parsed.data as Record<string, unknown>)["sub_project"]).toBeUndefined();
+    }
+  });
 });
 
 // MCP integration: register add_memory on /mcp, exercise auth + dispatch + invalid_args.
@@ -361,6 +392,95 @@ describe("add_memory (MCP integration)", () => {
       expect(payload.accepted).toBe(false);
       expect(payload.reason).toBe("queue_full");
       expect(payload.queued_at).toBeNull();
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  // AC-A9BN0M.7 — the MCP request path reads X-Quack-Sub-Project
+  // (case-insensitive), validates it against the slug regex, and writes it
+  // into the synthetic HookEnvelope's sub_project field.
+  test("AC-A9BN0M.7: X-Quack-Sub-Project header is stamped onto the queued envelope", async () => {
+    const { server, db, queue } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${BOOTSTRAP}`,
+          "X-Quack-Sub-Project": "backend-api",
+          ...MCP_HEADERS,
+        },
+        body: rpc("tools/call", { name: "add_memory", arguments: { content: "tagged fact" } }).body,
+      });
+      expect(res.status).toBe(200);
+      const env = queue.dequeue()!;
+      expect(env.kind).toBe("explicit_add");
+      expect((env as unknown as { sub_project?: string }).sub_project).toBe("backend-api");
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("AC-A9BN0M.7: header lookup is case-insensitive", async () => {
+    const { server, db, queue } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${BOOTSTRAP}`,
+          "x-quack-sub-project": "frontend",
+          ...MCP_HEADERS,
+        },
+        body: rpc("tools/call", { name: "add_memory", arguments: { content: "another fact" } }).body,
+      });
+      expect(res.status).toBe(200);
+      const env = queue.dequeue()!;
+      expect((env as unknown as { sub_project?: string }).sub_project).toBe("frontend");
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("AC-A9BN0M.7: missing X-Quack-Sub-Project header ⇒ envelope carries no sub_project", async () => {
+    const { server, db, queue } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+        body: rpc("tools/call", { name: "add_memory", arguments: { content: "untagged fact" } }).body,
+      });
+      expect(res.status).toBe(200);
+      const env = queue.dequeue()!;
+      expect((env as unknown as { sub_project?: string }).sub_project).toBeUndefined();
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("AC-A9BN0M.7: a malformed X-Quack-Sub-Project header ⇒ no sub_project (dropped)", async () => {
+    const { server, db, queue } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${BOOTSTRAP}`,
+          "X-Quack-Sub-Project": "Bad Slug!",
+          ...MCP_HEADERS,
+        },
+        body: rpc("tools/call", { name: "add_memory", arguments: { content: "bad header fact" } }).body,
+      });
+      // Malformed header is silently dropped — the call still succeeds.
+      expect(res.status).toBe(200);
+      const env = queue.dequeue()!;
+      expect((env as unknown as { sub_project?: string }).sub_project).toBeUndefined();
     } finally {
       server.stop(true);
       db.close();

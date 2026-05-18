@@ -12,9 +12,11 @@ ON CREATE SET
   d.id = randomUUID(),
   d.decided_at = coalesce($decided_at, $now),
   d.source_excerpt = $source_excerpt,
-  d.created_at = $now
+  d.created_at = $now,
+  d.source = $source
 ON MATCH SET
-  d.source_excerpt = coalesce(d.source_excerpt, $source_excerpt)
+  d.source_excerpt = coalesce(d.source_excerpt, $source_excerpt),
+  d.source = $source + [s IN coalesce(d.source, []) WHERE NOT s IN $source]
 RETURN d.id AS id, d.summary AS summary, d.project_id AS project_id
 `,
   paramSchema: z.object({
@@ -22,6 +24,7 @@ RETURN d.id AS id, d.summary AS summary, d.project_id AS project_id
     decided_at: z.string().nullable().optional(),
     source_excerpt: z.string().default(""),
     now: z.string().min(1),
+    source: z.array(z.string()).default([]),
     project_id: z.number().optional(),
   }),
   accessMode: "WRITE",

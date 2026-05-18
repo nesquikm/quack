@@ -17,6 +17,10 @@ export interface QueuedEnvelope {
   ctx: AuthContext;
   queued_at: string;
   project_slug?: string;
+  // Optional trusted-input sub-project tag. Hook clients set it from the
+  // HookEnvelope; add_memory (AC-A9BN0M.7) sets it from the validated
+  // X-Quack-Sub-Project request header. Absent ⇒ node `source` defaults to [].
+  sub_project?: string;
 }
 
 export interface ConsumerOptions {
@@ -47,7 +51,9 @@ export function startConsumer(opts: ConsumerOptions): Consumer {
       const { value: redactedPayload, matchCount } = redactor.redact(env.payload);
       if (matchCount > 0) incrementError("redaction_match");
       const result = await client.extract({ kind: env.kind, payload: redactedPayload });
-      await writeExtraction(adapter, env.ctx, result);
+      await writeExtraction(adapter, env.ctx, result, new Date().toISOString(), {
+        sub_project: env.sub_project,
+      });
     } catch (err) {
       incrementError("extraction_failed");
       deadLetter.append({

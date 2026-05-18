@@ -31,6 +31,7 @@ import { recentDecisions, recentDecisionsSchema } from "./tools/memory/recent_de
 import { addMemory, addMemorySchema } from "./tools/memory/add_memory";
 import type { BoundedQueue } from "../extract/queue";
 import type { QueuedEnvelope } from "../extract/consumer";
+import { SLUG_RE, SLUG_RE_DESCRIPTION } from "../shared/slug";
 
 // AC-DPY5GQ.11 — every memory tool's description must contain this clause so
 // Claude Code's MCP-manifest read sees the contract.
@@ -50,7 +51,7 @@ type MemoryToolHandler<A> = (args: A, ctx: AuthContext, graph: GraphAdapter | un
 type IngestToolHandler<A> = (
   args: A,
   ctx: AuthContext,
-  deps: { queue: BoundedQueue<QueuedEnvelope>; db: Database },
+  deps: { queue: BoundedQueue<QueuedEnvelope>; db: Database; sub_project?: string },
 ) => Promise<unknown>;
 
 interface RequestContext {
@@ -58,6 +59,18 @@ interface RequestContext {
   db: Database;
   graph: GraphAdapter | undefined;
   ingestQueue: BoundedQueue<QueuedEnvelope> | undefined;
+  // AC-A9BN0M.7: sub-project resolved from the X-Quack-Sub-Project request
+  // header (validated against the slug regex). Undefined when absent/malformed.
+  subProject: string | undefined;
+}
+
+// Reads X-Quack-Sub-Project (case-insensitive — Headers.get is case-insensitive)
+// and returns it only when it matches the slug regex (SLUG_RE, shared with
+// create_project and the extract writer); undefined otherwise.
+function resolveSubProjectHeader(request: Request): string | undefined {
+  const raw = request.headers.get("x-quack-sub-project");
+  if (raw !== null && SLUG_RE.test(raw)) return raw;
+  return undefined;
 }
 
 const CONTEXT_KEY = "quack:request";
@@ -194,7 +207,7 @@ function wrapIngest<A>(
   handler: IngestToolHandler<A>,
 ): (args: unknown, extra: unknown) => Promise<CallToolResult> {
   return async (args, extra) => {
-    const { ctx, db, ingestQueue } = extractContext(extra);
+    const { ctx, db, ingestQueue, subProject } = extractContext(extra);
     try {
       applyAdminGate(name, ctx);
     } catch (err) {
@@ -208,7 +221,9 @@ function wrapIngest<A>(
     }
     // addMemory is fire-and-forget; it returns `{ accepted: false }` on
     // backpressure rather than throwing, so no domain-error catch is needed.
-    return ok(await handler(parsed.data, ctx, { queue: ingestQueue, db }));
+    return ok(
+      await handler(parsed.data, ctx, { queue: ingestQueue, db, sub_project: subProject }),
+    );
   };
 }
 
@@ -252,7 +267,7 @@ export function buildMcpServer(): McpServer {
   );
   reg(
     "create_project",
-    "Admin-only. Create a new project. Slug must match /^[a-z0-9][a-z0-9_-]{0,62}$/; leading underscore is reserved.",
+    `Admin-only. Create a new project. Slug must match ${SLUG_RE_DESCRIPTION}; leading underscore is reserved.`,
     wrap("create_project", createProjectSchema, createProject as ToolHandler<{ slug: string; display_name: string }>),
   );
   reg(
@@ -361,6 +376,9 @@ export function createMcpHandler(
       db,
       graph: options.graph,
       ingestQueue: options.ingestQueue,
+      // AC-A9BN0M.7: resolve the sub-project tag from the request header now,
+      // while the raw Request is in scope.
+      subProject: resolveSubProjectHeader(request),
     };
     return transport.handleRequest(request, {
       authInfo: {

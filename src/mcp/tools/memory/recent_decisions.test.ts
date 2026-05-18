@@ -66,4 +66,37 @@ describe("recentDecisions", () => {
       recentDecisions({ time_window: "7d", limit: 20, mode: "planned" }, memberCtx, mockAdapter([])),
     ).rejects.toMatchObject({ code: "not_implemented_yet" });
   });
+
+  // AC-A9BN0M.5 / .6 — optional slug-shaped `sub_projects` filter, threaded
+  // into the memory.recent_decisions template params.
+  test("AC-A9BN0M.5: schema accepts an absent and a slug-shaped sub_projects", () => {
+    expect(recentDecisionsSchema.safeParse({ time_window: "7d" }).success).toBe(true);
+    expect(recentDecisionsSchema.safeParse({ time_window: "7d", sub_projects: ["backend"] }).success).toBe(true);
+  });
+
+  test("AC-A9BN0M.6: a malformed sub_projects element is rejected by Zod", () => {
+    const parsed = recentDecisionsSchema.safeParse({ time_window: "7d", sub_projects: ["Bad Slug!"] });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.path).toContain("sub_projects");
+    }
+  });
+
+  test("AC-A9BN0M.5: sub_projects is threaded into the memory.recent_decisions template params", async () => {
+    const calls: Array<{ templateId: string; params: Record<string, unknown> }> = [];
+    const adapter = {
+      async run(templateId: string, params: unknown) {
+        calls.push({ templateId, params: (params ?? {}) as Record<string, unknown> });
+        return { rows: [] };
+      },
+    } as GraphAdapter;
+    await recentDecisions(
+      { time_window: "7d", limit: 20, mode: "templates", sub_projects: ["backend"] },
+      memberCtx,
+      adapter,
+    );
+    const call = calls.find((c) => c.templateId === "memory.recent_decisions");
+    expect(call).toBeDefined();
+    expect(call!.params["sub_projects"]).toEqual(["backend"]);
+  });
 });

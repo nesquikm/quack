@@ -58,6 +58,7 @@ export async function handleIngest(request: Request, ctx: AuthContext, deps: Ing
     payload: env.payload,
     ctx,
     queued_at: queuedAt,
+    sub_project: env.sub_project,
   });
   if (!ok) {
     incrementError("queue_full");

@@ -15,6 +15,7 @@ MATCH (a {project_id: $project_id, id: $node_a})
 MATCH (b {project_id: $project_id, id: $node_b})
 MATCH p = shortestPath((a)-[*..8]-(b))
 WHERE length(p) <= $max_hops
+  AND all(n IN nodes(p) WHERE $sub_projects = [] OR n.source IS NULL OR ANY(s IN $sub_projects WHERE s IN n.source))
 WITH p, length(p) AS hops
 LIMIT $limit
 RETURN
@@ -28,6 +29,7 @@ RETURN
     max_hops: z.number().int().positive().max(8).default(5),
     limit: z.number().int().positive().max(100).default(25),
     project_id: z.number().optional(),
+    sub_projects: z.array(z.string()).default([]),
   }),
   accessMode: "READ",
 };

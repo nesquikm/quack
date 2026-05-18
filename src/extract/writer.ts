@@ -2,6 +2,7 @@ import type { GraphAdapter } from "../graph/adapter";
 import type { AuthContext } from "../auth/middleware";
 import type { ExtractionResult } from "./client";
 import { canonicalizeName, dedupeAliases } from "./canonicalize";
+import { SLUG_RE } from "../shared/slug";
 
 // Writes an ExtractionResult to the graph in dependency order:
 //  1) Entities (so MENTIONS/RELATED_TO endpoints exist)
@@ -27,6 +28,21 @@ interface EndpointKey {
   name: string;
 }
 
+// The trusted-input fragment of the ingest envelope the writer cares about.
+// `sub_project` is a distinct trusted-input field — NOT routed through the
+// model-supplied-project_id override path.
+interface WriteEnvelope {
+  sub_project?: string;
+}
+
+// Re-validates the envelope sub-project against the slug regex (defense-in-depth)
+// and resolves it to a $source list: a single-element array when valid, [] otherwise.
+function resolveSource(envelope?: WriteEnvelope): string[] {
+  const sp = envelope?.sub_project;
+  if (typeof sp === "string" && SLUG_RE.test(sp)) return [sp];
+  return [];
+}
+
 function endpointKeyOf(kind: string, name: string): string {
   return `${kind}::${name}`;
 }
@@ -36,6 +52,7 @@ export async function writeExtraction(
   ctx: AuthContext,
   result: ExtractionResult,
   now: string = new Date().toISOString(),
+  envelope?: WriteEnvelope,
 ): Promise<{
   entities: number;
   decisions: number;
@@ -45,6 +62,7 @@ export async function writeExtraction(
   relations: number;
 }> {
   const endpointId = new Map<string, string>();
+  const source = resolveSource(envelope);
 
   // 1) Entities
   let entityCount = 0;
@@ -53,9 +71,9 @@ export async function writeExtraction(
     if (!name) continue;
     const aliases = dedupeAliases(name, e.aliases ?? []);
     const out = await adapter.run<
-      { name: string; kind: string; aliases: string[]; now: string },
+      { name: string; kind: string; aliases: string[]; source: string[]; now: string },
       UpsertedNode
-    >("extract.upsert_entity", { name, kind: e.kind, aliases, now }, ctx);
+    >("extract.upsert_entity", { name, kind: e.kind, aliases, source, now }, ctx);
     const row = out.rows[0];
     if (row?.id) {
       endpointId.set(endpointKeyOf("Entity", e.name), row.id);
@@ -69,9 +87,9 @@ export async function writeExtraction(
   const filePathToId = new Map<string, string>();
   for (const f of result.files) {
     const out = await adapter.run<
-      { path: string; repo_root: string | null; now: string },
+      { path: string; repo_root: string | null; source: string[]; now: string },
       UpsertedNode
-    >("extract.upsert_file", { path: f.path, repo_root: f.repo_root ?? null, now }, ctx);
+    >("extract.upsert_file", { path: f.path, repo_root: f.repo_root ?? null, source, now }, ctx);
     const row = out.rows[0];
     if (row?.id) {
       endpointId.set(endpointKeyOf("File", f.path), row.id);
@@ -88,9 +106,9 @@ export async function writeExtraction(
       // Symbol references a file the model didn't list as a separate File row.
       // Materialize it on the fly.
       const out = await adapter.run<
-        { path: string; repo_root: string | null; now: string },
+        { path: string; repo_root: string | null; source: string[]; now: string },
         UpsertedNode
-      >("extract.upsert_file", { path: s.file_path, repo_root: null, now }, ctx);
+      >("extract.upsert_file", { path: s.file_path, repo_root: null, source, now }, ctx);
       fileId = out.rows[0]?.id;
       if (fileId) {
         filePathToId.set(s.file_path, fileId);
@@ -100,9 +118,9 @@ export async function writeExtraction(
     }
     if (!fileId) continue;
     const out = await adapter.run<
-      { name: string; file_id: string; kind: string; now: string },
+      { name: string; file_id: string; kind: string; source: string[]; now: string },
       UpsertedNode
-    >("extract.upsert_symbol", { name: s.name, file_id: fileId, kind: s.kind, now }, ctx);
+    >("extract.upsert_symbol", { name: s.name, file_id: fileId, kind: s.kind, source, now }, ctx);
     const row = out.rows[0];
     if (row?.id) {
       endpointId.set(endpointKeyOf("Symbol", s.name), row.id);
@@ -114,11 +132,11 @@ export async function writeExtraction(
   let decisionCount = 0;
   for (const d of result.decisions) {
     const out = await adapter.run<
-      { summary: string; decided_at: string | null; source_excerpt: string; now: string },
+      { summary: string; decided_at: string | null; source_excerpt: string; source: string[]; now: string },
       UpsertedNode
     >(
       "extract.upsert_decision",
-      { summary: d.summary, decided_at: d.decided_at ?? null, source_excerpt: d.source_excerpt ?? "", now },
+      { summary: d.summary, decided_at: d.decided_at ?? null, source_excerpt: d.source_excerpt ?? "", source, now },
       ctx,
     );
     const row = out.rows[0];
@@ -132,9 +150,9 @@ export async function writeExtraction(
   let feedbackCount = 0;
   for (const fb of result.feedbacks) {
     const out = await adapter.run<
-      { body: string; sentiment: string | null; now: string },
+      { body: string; sentiment: string | null; source: string[]; now: string },
       UpsertedNode
-    >("extract.upsert_feedback", { body: fb.body, sentiment: fb.sentiment ?? null, now }, ctx);
+    >("extract.upsert_feedback", { body: fb.body, sentiment: fb.sentiment ?? null, source, now }, ctx);
     const row = out.rows[0];
     if (row?.id) {
       endpointId.set(endpointKeyOf("Feedback", fb.body), row.id);
