@@ -1,8 +1,8 @@
 ---
 title: Sub-project memory — source tag for cross-project recall within a project
 milestone: M8
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-18T19:08:44Z
 id: fr_01KRXW6WYE86EKTCWC06A9BN0M
 created_at: 2026-05-18T15:45:25Z
 ---
@@ -185,3 +185,7 @@ verified with a run-twice idempotency assertion mirroring the `Entity.aliases` t
 - `delete_project` (FR-EDXH3X) is unchanged — it deletes the whole `project_id`
   partition, which correctly removes the entire connected set. Deleting a single
   sub-project's memory is the deferred-registry feature, not part of this FR.
+
+## Implementation notes
+
+No advisory notes.
