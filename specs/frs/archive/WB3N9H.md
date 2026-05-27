@@ -1,8 +1,8 @@
 ---
 title: ask_memory MCP tool (agentic LLM-synthesized answers over the memory graph)
 milestone: M9
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-27T20:29:12Z
 id: fr_01KSN1KDS3NJGJ68ANZXWB3N9H
 created_at: 2026-05-27T00:00:00Z
 ---
@@ -121,3 +121,9 @@ text. Member-or-admin readable.
   bullet + §5 Out of Scope; `technical-spec.md` Read-path-synthesis decision row + pattern +
   a new ADR row + §3 MCP-tools list. The NL→Cypher prohibition (`requirements.md` §5,
   technical-spec risk) stays unchanged — `ask_memory` does not generate Cypher.
+
+## Implementation notes
+
+- `runAskLoop`'s `redactor` is optional — production always supplies `createRedactor()` (`ask_memory.ts`), and the only redactor-less callers are in-process test fakes with no external endpoint, so AC-7's defense-in-depth holds in practice; the optional param is a residual footgun, not a live leak.
+- Empty `tool_calls: []` model turns add latency but are cap-bounded by `QUACK_ASK_MAX_ITERATIONS` (not an infinite loop).
+- Two robustness fixes beyond the AC tests: the forced-synthesis turn falls back to an explicit message if the model returns `tool_calls` instead of an answer; malformed/empty model output surfaces as a graceful `MemoryToolError("model_protocol_error")` rather than a raw `SyntaxError` escaping `wrapAsk`.
