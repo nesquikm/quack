@@ -81,16 +81,11 @@ describe("plugin / marketplace version sync", () => {
     expect(marketplaceVersion).toBe(pluginVersion);
   });
 
-  // AC-9MMXZP.1 — post-fix pin: all three strings equal 0.4.1.
-  test("all three version strings equal 0.4.1 after the M7 release commit (AC-9MMXZP.1)", () => {
-    const pkgVersion = readPackageVersion();
-    const pluginVersion = readPluginVersion();
-    const marketplaceVersion = readMarketplaceQuackVersion();
-
-    expect(pkgVersion).toBe("0.4.1");
-    expect(pluginVersion).toBe("0.4.1");
-    expect(marketplaceVersion).toBe("0.4.1");
-  });
+  // The three-way version-sync invariant is enforced structurally by the
+  // pairwise-equality test above (AC-9MMXZP.2). A hard-coded version literal
+  // here was an M7-release artifact (AC-9MMXZP.1) that broke on every release
+  // — /ship-milestone bumps the version files but not the test literal — so it
+  // was removed. Sync is the contract; the specific number is not.
 });
 
 describe("CLAUDE.md ## Release Files declares plugin metadata bumps (AC-9MMXZP.3)", () => {
