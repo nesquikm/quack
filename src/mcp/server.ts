@@ -29,6 +29,7 @@ import { getNeighbors, getNeighborsSchema } from "./tools/memory/get_neighbors";
 import { pathBetween, pathBetweenSchema } from "./tools/memory/path_between";
 import { recentDecisions, recentDecisionsSchema } from "./tools/memory/recent_decisions";
 import { addMemory, addMemorySchema } from "./tools/memory/add_memory";
+import { askMemory, askMemorySchema, type AskClient } from "./tools/memory/ask_memory";
 import type { BoundedQueue } from "../extract/queue";
 import type { QueuedEnvelope } from "../extract/consumer";
 import { SLUG_RE, SLUG_RE_DESCRIPTION } from "../shared/slug";
@@ -48,6 +49,12 @@ const SERVER_VERSION = (packageJson as { version: string }).version;
 // handler, surfacing the AC-mandated `invalid_args` code with the Zod issue path.
 type ToolHandler<A> = (args: A, ctx: AuthContext, db: Database) => unknown;
 type MemoryToolHandler<A> = (args: A, ctx: AuthContext, graph: GraphAdapter | undefined) => Promise<unknown>;
+type AskToolHandler<A> = (
+  args: A,
+  ctx: AuthContext,
+  graph: GraphAdapter | undefined,
+  deps: { client: AskClient | undefined },
+) => Promise<unknown>;
 type IngestToolHandler<A> = (
   args: A,
   ctx: AuthContext,
@@ -62,6 +69,10 @@ interface RequestContext {
   // AC-A9BN0M.7: sub-project resolved from the X-Quack-Sub-Project request
   // header (validated against the slug regex). Undefined when absent/malformed.
   subProject: string | undefined;
+  // AC-WB3N9H.1: ask_memory's planned loop needs an injected model client.
+  // Undefined when QUACK_MODEL_* is unconfigured (handler fails closed with
+  // model_unavailable) or in the manifest-only buildMcpServer path.
+  askClient: AskClient | undefined;
 }
 
 // Reads X-Quack-Sub-Project (case-insensitive — Headers.get is case-insensitive)
@@ -181,6 +192,43 @@ function wrapMemory<A>(
     if (!parsed.success) return invalidArgsResult(parsed.error);
     try {
       return ok(await handler(parsed.data, ctx, graph));
+    } catch (err) {
+      if (err instanceof MemoryToolError) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ error: err.code, message: err.message, ...err.extra }),
+            },
+          ],
+        };
+      }
+      throw err;
+    }
+  };
+}
+
+// Ask-tool wrapper — like wrapMemory(), but also pulls the injected AskClient
+// off the RequestContext and passes it to the handler. ask_memory is NOT in
+// ADMIN_TOOLS (member-readable); the gate call is passive for uniformity.
+function wrapAsk<A>(
+  name: string,
+  schema: z.ZodType<A>,
+  handler: AskToolHandler<A>,
+): (args: unknown, extra: unknown) => Promise<CallToolResult> {
+  return async (args, extra) => {
+    const { ctx, graph, askClient } = extractContext(extra);
+    try {
+      applyAdminGate(name, ctx);
+    } catch (err) {
+      if (err instanceof ForbiddenError) return errResult("forbidden", 403);
+      throw err;
+    }
+    const parsed = schema.safeParse(args ?? {});
+    if (!parsed.success) return invalidArgsResult(parsed.error);
+    try {
+      return ok(await handler(parsed.data, ctx, graph, { client: askClient }));
     } catch (err) {
       if (err instanceof MemoryToolError) {
         return {
@@ -339,6 +387,14 @@ export function buildMcpServer(): McpServer {
     wrapMemory("recent_decisions", recentDecisionsSchema, recentDecisions as MemoryToolHandler<unknown>),
   );
 
+  // AC-WB3N9H.1: planned "ask" tool — member-readable, NOT in ADMIN_TOOLS.
+  // Description is a placeholder pending AC-WB3N9H.11's exact manifest wording.
+  reg(
+    "ask_memory",
+    `Plans a multi-step traversal over the project's memory graph to answer a question; requires QUACK_MODEL_* to be configured. ${MEMORY_CLAUSE}`,
+    wrapAsk("ask_memory", askMemorySchema, askMemory as AskToolHandler<unknown>),
+  );
+
   // AC-41NXTZ.9: verbatim manifest description.
   reg(
     "add_memory",
@@ -355,6 +411,7 @@ export function buildMcpServer(): McpServer {
 export interface CreateMcpHandlerOptions {
   graph?: GraphAdapter;
   ingestQueue?: BoundedQueue<QueuedEnvelope>;
+  askClient?: AskClient;
 }
 
 export function createMcpHandler(
@@ -379,6 +436,7 @@ export function createMcpHandler(
       // AC-A9BN0M.7: resolve the sub-project tag from the request header now,
       // while the raw Request is in scope.
       subProject: resolveSubProjectHeader(request),
+      askClient: options.askClient,
     };
     return transport.handleRequest(request, {
       authInfo: {
@@ -395,6 +453,7 @@ export function listTools(): string[] {
   return [
     "add_member",
     "add_memory",
+    "ask_memory",
     "cleanup_status",
     "create_project",
     "delete_project",

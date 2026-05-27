@@ -47,6 +47,11 @@ const envSchema = z.object({
 
   // add_memory MCP tool (FR-41NXTZ). Caps `content` byte length.
   QUACK_ADD_MEMORY_MAX_BYTES: z.coerce.number().int().positive().default(32768),
+
+  // ask_memory planned-mode loop caps (FR-WB3N9H). When either is hit the loop
+  // stops and forces a single synthesis turn.
+  QUACK_ASK_MAX_ITERATIONS: z.coerce.number().int().positive().default(3),
+  QUACK_ASK_MAX_TOOL_CALLS: z.coerce.number().int().positive().default(8),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -79,4 +84,22 @@ export function getAddMemoryMaxBytes(
   source: Record<string, string | undefined> = Bun.env,
 ): number {
   return addMemoryMaxBytesSchema.parse(source.QUACK_ADD_MEMORY_MAX_BYTES);
+}
+
+// Narrow readers for the ask_memory loop caps (FR-WB3N9H). Same rationale as
+// getAddMemoryMaxBytes: each reads only its own var so import-time / unit-test
+// callers don't need a fully-populated env (e.g., QUACK_NEO4J_PASSWORD unset).
+// Same default + coercion semantics as the full schema.
+const askMaxIterationsSchema = z.coerce.number().int().positive().default(3);
+export function getAskMaxIterations(
+  source: Record<string, string | undefined> = Bun.env,
+): number {
+  return askMaxIterationsSchema.parse(source.QUACK_ASK_MAX_ITERATIONS);
+}
+
+const askMaxToolCallsSchema = z.coerce.number().int().positive().default(8);
+export function getAskMaxToolCalls(
+  source: Record<string, string | undefined> = Bun.env,
+): number {
+  return askMaxToolCallsSchema.parse(source.QUACK_ASK_MAX_TOOL_CALLS);
 }
