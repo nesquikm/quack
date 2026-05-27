@@ -83,4 +83,37 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ADD_MEMORY_MAX_BYTES: "0" })).toThrow(EnvError);
     expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ADD_MEMORY_MAX_BYTES: "-100" })).toThrow(EnvError);
   });
+
+  // AC-WB3N9H.4 — ask_memory loop caps. Both positive-int, defaulted.
+  test("AC-WB3N9H.4: QUACK_ASK_MAX_ITERATIONS defaults to 3", () => {
+    const env = parseEnv({ QUACK_NEO4J_PASSWORD: "pw" });
+    expect((env as unknown as { QUACK_ASK_MAX_ITERATIONS: number }).QUACK_ASK_MAX_ITERATIONS).toBe(3);
+  });
+
+  test("AC-WB3N9H.4: QUACK_ASK_MAX_TOOL_CALLS defaults to 8", () => {
+    const env = parseEnv({ QUACK_NEO4J_PASSWORD: "pw" });
+    expect((env as unknown as { QUACK_ASK_MAX_TOOL_CALLS: number }).QUACK_ASK_MAX_TOOL_CALLS).toBe(8);
+  });
+
+  test("AC-WB3N9H.4: QUACK_ASK_MAX_ITERATIONS accepts a positive override", () => {
+    const env = parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_ITERATIONS: "5" });
+    expect((env as unknown as { QUACK_ASK_MAX_ITERATIONS: number }).QUACK_ASK_MAX_ITERATIONS).toBe(5);
+  });
+
+  test("AC-WB3N9H.4: QUACK_ASK_MAX_TOOL_CALLS accepts a positive override", () => {
+    const env = parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_TOOL_CALLS: "12" });
+    expect((env as unknown as { QUACK_ASK_MAX_TOOL_CALLS: number }).QUACK_ASK_MAX_TOOL_CALLS).toBe(12);
+  });
+
+  test("AC-WB3N9H.4: QUACK_ASK_MAX_ITERATIONS rejects non-positive / non-int values", () => {
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_ITERATIONS: "0" })).toThrow(EnvError);
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_ITERATIONS: "-2" })).toThrow(EnvError);
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_ITERATIONS: "2.5" })).toThrow(EnvError);
+  });
+
+  test("AC-WB3N9H.4: QUACK_ASK_MAX_TOOL_CALLS rejects non-positive / non-int values", () => {
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_TOOL_CALLS: "0" })).toThrow(EnvError);
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_TOOL_CALLS: "-1" })).toThrow(EnvError);
+    expect(() => parseEnv({ QUACK_NEO4J_PASSWORD: "pw", QUACK_ASK_MAX_TOOL_CALLS: "3.3" })).toThrow(EnvError);
+  });
 });

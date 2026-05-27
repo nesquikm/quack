@@ -20,6 +20,8 @@ import { setSweeper } from "../admin/tools/_cleanup_holder";
 import { BoundedQueue } from "../extract/queue";
 import { createRedactor } from "../extract/redact";
 import { createExtractionClient } from "../extract/client";
+import { createAskClient } from "../mcp/memory/ask_client";
+import type { AskClient } from "../mcp/tools/memory/ask_loop";
 import { createDeadLetterWriter } from "../extract/dead_letter";
 import { startConsumer, type Consumer, type QueuedEnvelope } from "../extract/consumer";
 import { handleIngest } from "../ingest/handler";
@@ -98,6 +100,7 @@ export interface StartServerOptions {
   mcpHandlerFactory?: (
     graph: GraphAdapter | null,
     ingestQueue?: BoundedQueue<QueuedEnvelope>,
+    askClient?: AskClient,
   ) => BuildAppOptions["mcpHandler"];
   // Test seam: opt out of touching Neo4j (driver creation + migrations).
   // Production startServer always wires the graph; bind/server tests that
@@ -124,6 +127,10 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
   let graph: GraphAdapter | null = null;
   let ingestQueue: BoundedQueue<QueuedEnvelope> | undefined;
   let consumer: Consumer | undefined;
+  // AC-WB3N9H.3: the planned ask loop's model client. Built from QUACK_MODEL_*
+  // (the same condition that enables the extractor); undefined otherwise so
+  // ask_memory fails closed with model_unavailable.
+  let askClient: AskClient | undefined;
   if (!options.skipGraph) {
     // Register every template the runtime needs before the validator scans.
     // Idempotent — multiple startServer calls (tests) don't double-register.
@@ -166,6 +173,12 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
         apiKey: env.QUACK_MODEL_API_KEY,
         modelName: env.QUACK_MODEL_NAME,
       });
+      // Same endpoint, adapted to the ask loop's turn protocol (AC-WB3N9H.3).
+      askClient = createAskClient({
+        baseURL: env.QUACK_MODEL_BASE_URL,
+        apiKey: env.QUACK_MODEL_API_KEY,
+        modelName: env.QUACK_MODEL_NAME,
+      });
       const deadLetter = createDeadLetterWriter(
         join(env.QUACK_DATA_DIR, "dead-letters.jsonl"),
         env.QUACK_DEAD_LETTER_MAX_BYTES,
@@ -204,7 +217,7 @@ export function startServer(options: StartServerOptions = {}): { server: AnyServ
   void queueIncrement;
 
   const resolvedMcpHandler = options.mcpHandlerFactory
-    ? options.mcpHandlerFactory(graph, ingestQueue)
+    ? options.mcpHandlerFactory(graph, ingestQueue, askClient)
     : options.mcpHandler;
   const fetch = buildFetch({ db, logger, mcpHandler: resolvedMcpHandler, graphDriver, ingestQueue });
 

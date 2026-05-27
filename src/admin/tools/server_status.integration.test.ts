@@ -61,6 +61,8 @@ async function startTestServer() {
       QUACK_MODEL_NAME: "gpt-4o-mini",
       QUACK_DEAD_LETTER_MAX_BYTES: 1024 * 1024,
       QUACK_ADD_MEMORY_MAX_BYTES: 32768,
+      QUACK_ASK_MAX_ITERATIONS: 3,
+      QUACK_ASK_MAX_TOOL_CALLS: 8,
     },
     mcpHandler: handler,
     skipGraph: true,

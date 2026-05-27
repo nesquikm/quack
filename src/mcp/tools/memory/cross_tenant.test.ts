@@ -12,6 +12,8 @@ import { getNeighbors } from "./get_neighbors";
 import { pathBetween } from "./path_between";
 import { recentDecisions } from "./recent_decisions";
 import { addMemory } from "./add_memory";
+import { askMemory } from "./ask_memory";
+import type { AskClient, AskTurn } from "./ask_loop";
 import { BoundedQueue } from "../../../extract/queue";
 import { writeExtraction } from "../../../extract/writer";
 import type { ExtractionResult } from "../../../extract/client";
@@ -234,5 +236,41 @@ describe("memory tools — cross-tenant isolation (integration)", () => {
       adapter,
     );
     expect(own.results.some((r) => r.id === "crosstag-a")).toBe(true);
+  });
+
+  // AC-WB3N9H.9 — ask_memory invoked with project A's ctx must only ever surface
+  // project-A nodes. The loop's internal primitive calls bind ctx.project_id, so
+  // the overlapping-name 'auth' node from project B is never reachable, in
+  // answer text, results, or meta.coverage.
+  test("AC-WB3N9H.9: ask_memory with project-A ctx never surfaces project-B nodes", async () => {
+    if (!dockerOk || !adapter) return;
+
+    function scriptedClient(turns: AskTurn[]): AskClient {
+      const queue = [...turns];
+      return {
+        async next(): Promise<AskTurn> {
+          const t = queue.shift();
+          if (!t) throw new Error("scripted client exhausted");
+          return t;
+        },
+      };
+    }
+
+    // The model searches for the overlapping entity name then answers, echoing
+    // whatever ids it observed (so a leak would show up in the answer text too).
+    const client = scriptedClient([
+      { type: "tool_calls", calls: [{ tool: "search_memory", args: { entities: ["auth"], types: ["Entity"], limit: 20 } }] },
+      { type: "answer", text: "the auth entity for this project" },
+    ]);
+
+    const out = await askMemory({ question: "what do we know about auth?" }, ctxA, adapter, { client });
+
+    // results: only project A's node.
+    expect(out.results.some((r) => r.id === "a-1001")).toBe(true);
+    expect(out.results.some((r) => r.id === "b-2002")).toBe(false);
+    expect(out.results.every((r) => r.project_id === ctxA.project_id)).toBe(true);
+
+    // answer text must not contain project B's node id.
+    expect(out.answer).not.toContain("b-2002");
   });
 });
