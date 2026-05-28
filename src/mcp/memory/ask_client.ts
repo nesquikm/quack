@@ -1,44 +1,16 @@
 // Production AskClient (FR-WB3N9H AC-3) — adapts an OpenAI-compatible chat
-// endpoint to the AskClient.next() interface the planned ask loop drives. Each
-// turn, the loop's input (the question plus the cumulative redacted
-// observations) is serialized into a user message; the model replies with a
-// single JSON object describing either the next tool calls or a final answer.
+// endpoint to the AskClient.complete() interface using NATIVE tool-calling. The
+// loop hands us the running conversation + the tool manifest; we forward both to
+// the chat-completions endpoint with `tools` + `tool_choice: auto` and return
+// the assistant's content and/or structured tool_calls. No JSON-in-content
+// protocol — the model gets each tool's real argument schema and the transport
+// parses tool_calls structurally.
 //
 // Mirrors the injection seam in src/extract/client.ts (openaiCtor?) so the loop
 // can be exercised with a scripted fake in tests without a network round-trip.
 
-import { z } from "zod";
 import OpenAI from "openai";
-import { ASK_SYSTEM_PROMPT } from "./ask_prompt";
-import { MemoryToolError } from "../errors";
-import type { AskClient, AskTurn } from "../tools/memory/ask_loop";
-
-// The model is instructed (in the system prompt suffix below) to emit exactly
-// this JSON shape. `args` is optional and defaults to {} so a parameterless
-// tool call is tolerated.
-const askTurnSchema = z.union([
-  z.object({
-    type: z.literal("tool_calls"),
-    calls: z.array(z.object({ tool: z.string().min(1), args: z.unknown().optional() })),
-  }),
-  z.object({ type: z.literal("answer"), text: z.string() }),
-]);
-
-const PROTOCOL = `\n\nRespond with a SINGLE JSON object and nothing else.
-To call tools: {"type":"tool_calls","calls":[{"tool":"<one of the four tools>","args":{ ... }}]}
-To give your final answer: {"type":"answer","text":"<your answer>"}`;
-
-// Parses a model turn (raw JSON string) into an AskTurn. Unknown tool names are
-// left intact — the loop skips and warns on them (AC-10) rather than the client
-// silently dropping them.
-export function parseAskTurn(raw: string): AskTurn {
-  const parsed = askTurnSchema.parse(JSON.parse(raw));
-  if (parsed.type === "answer") return { type: "answer", text: parsed.text };
-  return {
-    type: "tool_calls",
-    calls: parsed.calls.map((c) => ({ tool: c.tool, args: c.args ?? {} })),
-  };
-}
+import type { AskClient, AskCompletion, AskMessage, AskToolSpec } from "../tools/memory/ask_loop";
 
 export interface AskClientOptions {
   baseURL: string;
@@ -48,14 +20,34 @@ export interface AskClientOptions {
   openaiCtor?: typeof OpenAI;
 }
 
+interface RawToolCall {
+  id?: string;
+  function?: { name?: string; arguments?: string };
+}
 interface ChatLike {
   chat: {
     completions: {
       create(req: Record<string, unknown>): Promise<{
-        choices: Array<{ message: { content: string | null } }>;
+        choices: Array<{ message: { content: string | null; tool_calls?: RawToolCall[] } }>;
       }>;
     };
   };
+}
+
+// Parse one OpenAI tool_call into an AskToolCall. A malformed `arguments` JSON
+// string degrades to {} — the loop's per-tool Zod validation then rejects it as
+// invalid_tool_args rather than the whole turn failing.
+function parseRawToolCall(raw: RawToolCall, idx: number): { id: string; name: string; args: unknown } {
+  let args: unknown = {};
+  const argStr = raw.function?.arguments;
+  if (typeof argStr === "string" && argStr.trim().length > 0) {
+    try {
+      args = JSON.parse(argStr);
+    } catch {
+      args = {};
+    }
+  }
+  return { id: raw.id ?? `call_${idx}`, name: raw.function?.name ?? "", args };
 }
 
 export function createAskClient(opts: AskClientOptions): AskClient {
@@ -63,27 +55,22 @@ export function createAskClient(opts: AskClientOptions): AskClient {
   const client = new Ctor({ baseURL: opts.baseURL, apiKey: opts.apiKey }) as unknown as ChatLike;
 
   return {
-    async next(input: unknown): Promise<AskTurn> {
-      const res = await client.chat.completions.create({
-        model: opts.modelName,
-        messages: [
-          { role: "system", content: ASK_SYSTEM_PROMPT + PROTOCOL },
-          { role: "user", content: JSON.stringify(input) },
-        ],
-        response_format: { type: "json_object" },
-      });
-      const content = res.choices[0]?.message?.content ?? "";
-      // A malformed / empty / non-JSON model reply must surface as a graceful
-      // MemoryToolError (caught by wrapAsk) rather than a raw SyntaxError /
-      // ZodError that would escape as a 500-class internal error.
-      try {
-        return parseAskTurn(content);
-      } catch {
-        throw new MemoryToolError(
-          "model_protocol_error",
-          "the model returned a response that did not match the expected ask protocol",
-        );
+    async complete(messages: AskMessage[], tools: AskToolSpec[]): Promise<AskCompletion> {
+      const req: Record<string, unknown> = { model: opts.modelName, messages };
+      if (tools.length > 0) {
+        req["tools"] = tools.map((t) => ({
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.parameters },
+        }));
+        req["tool_choice"] = "auto";
       }
+      const res = await client.chat.completions.create(req);
+      const msg = res.choices[0]?.message;
+      const toolCalls = (msg?.tool_calls ?? []).map((tc, i) => parseRawToolCall(tc, i));
+      // Replay the assistant message VERBATIM on the next turn so provider fields
+      // (e.g. Gemini's extra_content.google.thought_signature) round-trip — a
+      // reconstructed message drops them and the follow-up request 400s.
+      return { content: msg?.content ?? null, toolCalls, raw: msg as unknown as AskMessage };
     },
   };
 }

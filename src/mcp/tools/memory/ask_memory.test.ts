@@ -3,23 +3,25 @@ import { askMemory, askMemorySchema } from "./ask_memory";
 import { MemoryToolError } from "../../errors";
 import { listTools, buildMcpServer } from "../../server";
 import { ADMIN_TOOLS } from "../../../admin/index";
-import type { AskClient, AskTurn } from "./ask_loop";
+import type { AskClient, AskCompletion } from "./ask_loop";
 import type { GraphAdapter } from "../../../graph/adapter";
 import type { AuthContext } from "../../../auth/middleware";
 import { extractMemoryWrap } from "../../memory/dto";
 
 const ctx: AuthContext = { user_id: 1, project_id: 10, role: "member" };
 
-function scriptedClient(turns: AskTurn[]): AskClient {
+function scriptedClient(turns: AskCompletion[]): AskClient {
   const queue = [...turns];
   return {
-    async next(): Promise<AskTurn> {
+    async complete(): Promise<AskCompletion> {
       const t = queue.shift();
       if (!t) throw new Error("scripted client exhausted");
       return t;
     },
   };
 }
+const toolCall = (name: string, args: unknown): AskCompletion => ({ content: null, toolCalls: [{ id: "c1", name, args }] });
+const answer = (text: string): AskCompletion => ({ content: text, toolCalls: [] });
 
 function mockAdapter(rowsByTemplate: Record<string, unknown[]> = {}): GraphAdapter & { calls: string[] } {
   const calls: string[] = [];
@@ -81,8 +83,8 @@ describe("askMemory handler", () => {
       "memory.search": [{ label: "Entity", props: { id: "e1", project_id: 10, name: "auth" }, score: 1, neighbor: false }],
     });
     const client = scriptedClient([
-      { type: "tool_calls", calls: [{ tool: "search_memory", args: { entities: ["auth"] } }] },
-      { type: "answer", text: "auth is a library" },
+      toolCall("search_memory", { entities: ["auth"] }),
+      answer("auth is a library"),
     ]);
 
     const out = await askMemory({ question: "what is auth?" }, ctx, adapter, { client });
@@ -105,8 +107,8 @@ describe("askMemory handler", () => {
   test("AC-WB3N9H.6: empty retrieval → results [], no_full_text_match warning, answer still <memory>-wrapped", async () => {
     const adapter = mockAdapter({ "memory.search": [] });
     const client = scriptedClient([
-      { type: "tool_calls", calls: [{ tool: "search_memory", args: { entities: ["nope"] } }] },
-      { type: "answer", text: "No relevant memory was found." },
+      toolCall("search_memory", { entities: ["nope"] }),
+      answer("No relevant memory was found."),
     ]);
 
     const out = await askMemory({ question: "anything?" }, ctx, adapter, { client });

@@ -1,20 +1,19 @@
 import { describe, test, expect } from "bun:test";
-import { createAskClient, parseAskTurn } from "./ask_client";
-import { ASK_SYSTEM_PROMPT } from "./ask_prompt";
-import { MemoryToolError } from "../errors";
+import { createAskClient } from "./ask_client";
+import { ASK_TOOL_SPECS, type AskMessage } from "../tools/memory/ask_loop";
 
-// A minimal OpenAI-compatible constructor stand-in: records the create() request
-// and returns scripted JSON content as the assistant message.
-function fakeOpenAI(contents: string[]) {
+// Minimal OpenAI-compatible constructor stand-in: records each create() request
+// and returns scripted assistant messages (content and/or tool_calls).
+function fakeOpenAI(messages: Array<{ content: string | null; tool_calls?: unknown[] }>) {
   const requests: Array<Record<string, unknown>> = [];
-  const queue = [...contents];
+  const queue = [...messages];
   class FakeOpenAI {
     chat = {
       completions: {
         create: async (req: Record<string, unknown>) => {
           requests.push(req);
-          const content = queue.shift() ?? "";
-          return { choices: [{ message: { content } }] };
+          const msg = queue.shift() ?? { content: "" };
+          return { choices: [{ message: msg }] };
         },
       },
     };
@@ -22,63 +21,51 @@ function fakeOpenAI(contents: string[]) {
   return { Ctor: FakeOpenAI as unknown as typeof import("openai").default, requests };
 }
 
-describe("parseAskTurn", () => {
-  test("parses a tool_calls turn, defaulting absent args to {}", () => {
-    const turn = parseAskTurn('{"type":"tool_calls","calls":[{"tool":"search_memory","args":{"entities":["auth"]}},{"tool":"recent_decisions"}]}');
-    expect(turn.type).toBe("tool_calls");
-    if (turn.type === "tool_calls") {
-      expect(turn.calls[0]!.tool).toBe("search_memory");
-      expect(turn.calls[0]!.args).toEqual({ entities: ["auth"] });
-      expect(turn.calls[1]!.args).toEqual({});
-    }
-  });
+const sysUser: AskMessage[] = [
+  { role: "system", content: "sys" },
+  { role: "user", content: "what is auth?" },
+];
 
-  test("parses an answer turn", () => {
-    const turn = parseAskTurn('{"type":"answer","text":"auth is a library"}');
-    expect(turn).toEqual({ type: "answer", text: "auth is a library" });
-  });
-
-  test("throws on malformed JSON / shape", () => {
-    expect(() => parseAskTurn("not json")).toThrow();
-    expect(() => parseAskTurn('{"type":"nope"}')).toThrow();
-  });
-});
-
-describe("createAskClient", () => {
-  test("sends ASK_SYSTEM_PROMPT and returns the parsed tool_calls turn", async () => {
+describe("createAskClient.complete (native tool-calling)", () => {
+  test("forwards tools[] + tool_choice and parses structured tool_calls", async () => {
     const { Ctor, requests } = fakeOpenAI([
-      '{"type":"tool_calls","calls":[{"tool":"search_memory","args":{"entities":["auth"]}}]}',
+      { content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "search_memory", arguments: '{"entities":["auth"]}' } }] },
     ]);
     const client = createAskClient({ baseURL: "http://x", apiKey: "k", modelName: "m", openaiCtor: Ctor });
 
-    const turn = await client.next({ question: "what is auth?" });
+    const out = await client.complete(sysUser, ASK_TOOL_SPECS);
 
-    expect(turn.type).toBe("tool_calls");
-    const messages = requests[0]!["messages"] as Array<{ role: string; content: string }>;
-    expect(messages[0]!.role).toBe("system");
-    expect(messages[0]!.content).toContain(ASK_SYSTEM_PROMPT);
-    // the loop's input is serialized into the user turn so the model can plan
-    expect(JSON.stringify(messages)).toContain("what is auth?");
+    expect(out.content).toBeNull();
+    expect(out.toolCalls).toEqual([{ id: "call_1", name: "search_memory", args: { entities: ["auth"] } }]);
+    // request carried the tool manifest + auto choice + model
     expect(requests[0]!["model"]).toBe("m");
+    expect(requests[0]!["tool_choice"]).toBe("auto");
+    expect(Array.isArray(requests[0]!["tools"])).toBe(true);
+    expect(JSON.stringify(requests[0]!["tools"])).toContain("search_memory");
   });
 
-  test("surfaces a MemoryToolError (not a raw SyntaxError) on malformed model output", async () => {
-    const { Ctor } = fakeOpenAI(["not json at all"]);
+  test("returns content (no tool_calls) on a final answer", async () => {
+    const { Ctor } = fakeOpenAI([{ content: "auth is a library" }]);
     const client = createAskClient({ baseURL: "http://x", apiKey: "k", modelName: "m", openaiCtor: Ctor });
-    let thrown: unknown;
-    try {
-      await client.next({ question: "q" });
-    } catch (err) {
-      thrown = err;
-    }
-    expect(thrown).toBeInstanceOf(MemoryToolError);
-    expect((thrown as MemoryToolError).code).toBe("model_protocol_error");
+    const out = await client.complete(sysUser, ASK_TOOL_SPECS);
+    expect(out.content).toBe("auth is a library");
+    expect(out.toolCalls).toEqual([]);
   });
 
-  test("returns the parsed answer turn on a final response", async () => {
-    const { Ctor } = fakeOpenAI(['{"type":"answer","text":"done"}']);
+  test("omits tools[] when the manifest is empty (forced-synthesis turn)", async () => {
+    const { Ctor, requests } = fakeOpenAI([{ content: "final" }]);
     const client = createAskClient({ baseURL: "http://x", apiKey: "k", modelName: "m", openaiCtor: Ctor });
-    const turn = await client.next({ question: "q", observations: [] });
-    expect(turn).toEqual({ type: "answer", text: "done" });
+    await client.complete(sysUser, []);
+    expect(requests[0]!["tools"]).toBeUndefined();
+    expect(requests[0]!["tool_choice"]).toBeUndefined();
+  });
+
+  test("degrades a malformed tool_call arguments string to {} (loop's Zod gate rejects it)", async () => {
+    const { Ctor } = fakeOpenAI([
+      { content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "search_memory", arguments: "not json" } }] },
+    ]);
+    const client = createAskClient({ baseURL: "http://x", apiKey: "k", modelName: "m", openaiCtor: Ctor });
+    const out = await client.complete(sysUser, ASK_TOOL_SPECS);
+    expect(out.toolCalls).toEqual([{ id: "c1", name: "search_memory", args: {} }]);
   });
 });
