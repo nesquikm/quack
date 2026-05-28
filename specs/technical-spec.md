@@ -305,7 +305,7 @@ See `specs/testing-spec.md`. Boundary modules (auth middleware, `<memory>` wrap,
 
 ## 6. Risks & Considerations
 
-- **Prompt-injection laundering** (top risk per BRIEF.md): tool output stored as a "fact" and later surfaced via `search_memory` becomes Claude-trusted unless wrapped at the MCP boundary. Tests for this boundary are non-negotiable.
+- **Prompt-injection laundering** (top risk): tool output stored as a "fact" and later surfaced via `search_memory` becomes Claude-trusted unless wrapped at the MCP boundary. Tests for this boundary are non-negotiable.
 - **Cross-store consistency:** `auth.sqlite` and graph DB are two stores. `delete_project` is multi-step; a crash mid-delete leaves orphan graph data. Mitigation: `pending_cleanup` table + daily reconciliation sweep. Acceptable for v1 personal/team scale; revisit if scale grows.
 - **Bootstrap token leakage:** `QUACK_BOOTSTRAP_TOKEN` sits in `.env`. Ops must `.gitignore` it (already in M1) and use `docker secrets` or equivalent in production. Documented in deployment README.
 - **HTTP MCP transport maturity:** streamable HTTP MCP is newer than stdio. Pin SDK version; integration-test against the Claude Code MCP client in CI.

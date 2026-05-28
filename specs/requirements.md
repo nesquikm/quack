@@ -6,7 +6,7 @@
 
 Hooks running on a developer's machine POST session context to a Quack server's HTTP `/ingest` endpoint. A cheap LLM (Haiku / `gpt-4o-mini`-class) extracts entities, relations, and summaries into a graph database, partitioned per project. An MCP server (HTTP transport, same Bun process) exposes search/RAG tools back to Claude Code. Both endpoints sit behind shared bearer-token auth: each token authenticates exactly one `(user, project)` pair.
 
-The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admins manage users and projects via admin-only MCP tools (no web UI in v1). Per-project graph partitioning prevents cross-tenant data access at the API boundary. See `BRIEF.md` for the original design rationale and the `/dev-process-toolkit:brainstorm` output for the auth + multi-tenancy decisions.
+The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admins manage users and projects via admin-only MCP tools (no web UI in v1). Per-project graph partitioning prevents cross-tenant data access at the API boundary. See the `/dev-process-toolkit:brainstorm` output for the auth + multi-tenancy design rationale.
 
 ## 2. Functional Requirements (cross-cutting only)
 
