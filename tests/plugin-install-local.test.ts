@@ -44,7 +44,7 @@ describe("plugin install — source-tree invariants (always)", () => {
       "hooks/session_start.sh",
       "hooks/stop.sh",
       "hooks/post_tool_use.sh",
-      "commands/quack-install.md",
+      "commands/install.md",
       "README.md",
       // AC-44QGKH.8 — _lib/ now lives inside the plugin tree (hermetic).
       "hooks/_lib/dispatch.ts",
@@ -158,7 +158,7 @@ describe("plugin install — real CLI round-trip (opt-in)", () => {
         "hooks/session_start.sh",
         "hooks/stop.sh",
         "hooks/post_tool_use.sh",
-        "commands/quack-install.md",
+        "commands/install.md",
         "README.md",
         // AC-44QGKH.8 — _lib/ must be installed alongside the shims.
         "hooks/_lib/dispatch.ts",

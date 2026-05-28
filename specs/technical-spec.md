@@ -55,7 +55,7 @@ plugins/
     │   ├── stop.sh
     │   └── post_tool_use.sh
     ├── commands/
-    │   └── quack-install.md   # /quack:install <slug> slash command
+    │   └── install.md   # /quack:install <slug> slash command
     └── README.md
 ```
 
