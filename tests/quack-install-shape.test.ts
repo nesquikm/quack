@@ -11,13 +11,13 @@ import { join } from "node:path";
 // Covers AC-55S220.1, .2, .3, .6 (install-path side), .7, .8 (shape pinning).
 
 const REPO_ROOT = join(import.meta.dir, "..");
-const INSTALL_MD = join(REPO_ROOT, "plugins/quack/commands/quack-install.md");
+const INSTALL_MD = join(REPO_ROOT, "plugins/quack/commands/install.md");
 
 function body(): string {
   return readFileSync(INSTALL_MD, "utf8");
 }
 
-describe("AC-55S220.1 — quack-install.md documents the .mcp.json writer", () => {
+describe("AC-55S220.1 — install.md documents the .mcp.json writer", () => {
   test("references .mcp.json (not .envrc) as the config artifact it writes", () => {
     const md = body();
     expect(md).toContain(".mcp.json");
@@ -57,7 +57,7 @@ describe("AC-55S220.1 — quack-install.md documents the .mcp.json writer", () =
   });
 });
 
-describe("AC-55S220.2 — quack-install.md is adaptive on token minting", () => {
+describe("AC-55S220.2 — install.md is adaptive on token minting", () => {
   test("documents the admin-token-available branch — mint via the admin MCP flow", () => {
     const md = body();
     expect(md).toContain("QUACK_ADMIN_TOKEN");
@@ -75,7 +75,7 @@ describe("AC-55S220.2 — quack-install.md is adaptive on token minting", () => 
   });
 });
 
-describe("AC-55S220.3 — quack-install.md derives + confirms a sub-project slug", () => {
+describe("AC-55S220.3 — install.md derives + confirms a sub-project slug", () => {
   test("derives a suggestion from git remote get-url origin", () => {
     const md = body();
     expect(md).toContain("git remote get-url origin");
@@ -102,7 +102,7 @@ describe("AC-55S220.3 — quack-install.md derives + confirms a sub-project slug
   });
 });
 
-describe("AC-55S220.4 — quack-install.md drops the stale mcp-servers/quack.json reference", () => {
+describe("AC-55S220.4 — install.md drops the stale mcp-servers/quack.json reference", () => {
   test("does not claim the MCP server is declared in mcp-servers/quack.json", () => {
     // FR-55S220 deletes the plugin-declared `mcp-servers/quack.json`. The
     // command file must not still point at it — the server is declared only
@@ -112,7 +112,7 @@ describe("AC-55S220.4 — quack-install.md drops the stale mcp-servers/quack.jso
   });
 });
 
-describe("AC-55S220.6 — quack-install.md drops the .envrc / direnv path", () => {
+describe("AC-55S220.6 — install.md drops the .envrc / direnv path", () => {
   test("no longer writes .envrc", () => {
     const md = body();
     expect(md).not.toContain(".envrc");
@@ -129,7 +129,7 @@ describe("AC-55S220.6 — quack-install.md drops the .envrc / direnv path", () =
   });
 });
 
-describe("AC-55S220.7 — quack-install.md closing output documents the committed-token tradeoff", () => {
+describe("AC-55S220.7 — install.md closing output documents the committed-token tradeoff", () => {
   test("states .mcp.json holds a literal non-admin single-project token", () => {
     const md = body().toLowerCase();
     expect(md).toContain("literal");

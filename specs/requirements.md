@@ -147,8 +147,8 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-ZSN2GG.1 (marketplace.json canonical shape) | `.claude-plugin/marketplace.json` | `tests/plugin-version-sync.test.ts` |
 | AC-ZSN2GG.2 (plugin.json + version parity) | `plugins/quack/.claude-plugin/plugin.json` | `tests/plugin-version-sync.test.ts` |
 | AC-ZSN2GG.3 (three chmod +x hook wrappers + silent-disable) | `plugins/quack/hooks/{session_start,stop,post_tool_use}.sh` | `tests/plugin-hooks-syntax.test.ts` |
-| AC-ZSN2GG.4 (Quack MCP server declared via the `.mcp.json` `/quack:install` writes — superseded by AC-55S220.4, which removes the in-plugin server JSON) | `plugins/quack/commands/quack-install.md` | `tests/plugin-files.test.ts` |
-| AC-ZSN2GG.5 (/quack:install slash command — writes a single project-scoped `.mcp.json`, superseded by AC-55S220.1–3) | `plugins/quack/commands/quack-install.md` | manual smoke (deferred); shape pinned by file presence in `tests/plugin-install-local.test.ts` |
+| AC-ZSN2GG.4 (Quack MCP server declared via the `.mcp.json` `/quack:install` writes — superseded by AC-55S220.4, which removes the in-plugin server JSON) | `plugins/quack/commands/install.md` | `tests/plugin-files.test.ts` |
+| AC-ZSN2GG.5 (/quack:install slash command — writes a single project-scoped `.mcp.json`, superseded by AC-55S220.1–3) | `plugins/quack/commands/install.md` | manual smoke (deferred); shape pinned by file presence in `tests/plugin-install-local.test.ts` |
 | AC-ZSN2GG.6 (plugin README four-step install flow) | `plugins/quack/README.md` | `tests/plugin-files.test.ts` |
 | AC-ZSN2GG.7 (repo README install-as-plugin section) | `README.md` | `tests/plugin-files.test.ts` |
 | AC-ZSN2GG.8 (.dockerignore excludes plugins/) | `.dockerignore` | `tests/plugin-files.test.ts` |
@@ -177,13 +177,13 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-A9BN0M.7 (`add_memory` stamps sub-project from `X-Quack-Sub-Project` header) | `src/mcp/tools/memory/add_memory.ts`, `src/mcp/server.ts` | `src/mcp/tools/memory/add_memory.test.ts` |
 | AC-A9BN0M.8 (cross-tenant isolation re-verified — `sub_projects` cannot widen past `project_id`) | `src/graph/templates/memory/*.ts` | `src/mcp/tools/memory/cross_tenant.test.ts` (skipped when docker absent) |
 | AC-A9BN0M.9 (tests — envelope, ingest, writer, templates, per-tool, cross-tenant, add_memory, e2e) | n/a — test-only | `plugins/quack/hooks/_lib/__tests__/`, `src/ingest/handler.test.ts`, `src/extract/writer.test.ts`, `src/graph/templates/extract/*.test.ts`, `src/mcp/tools/memory/*`, `src/extract/pipeline.test.ts` |
-| AC-55S220.1 (`/quack:install` writes project-scoped `.mcp.json`, merge / non-overwrite) | `plugins/quack/commands/quack-install.md` | `tests/plugin-files.test.ts`, `plugins/quack/hooks/_lib/__tests__/config.test.ts` |
-| AC-55S220.2 (`/quack:install` adaptive token minting — admin-MCP mint vs. paste) | `plugins/quack/commands/quack-install.md` | `tests/plugin-files.test.ts` |
-| AC-55S220.3 (`/quack:install` derives + confirms sub-project slug; `--sub` arg) | `plugins/quack/commands/quack-install.md` | `tests/plugin-files.test.ts` |
+| AC-55S220.1 (`/quack:install` writes project-scoped `.mcp.json`, merge / non-overwrite) | `plugins/quack/commands/install.md` | `tests/plugin-files.test.ts`, `plugins/quack/hooks/_lib/__tests__/config.test.ts` |
+| AC-55S220.2 (`/quack:install` adaptive token minting — admin-MCP mint vs. paste) | `plugins/quack/commands/install.md` | `tests/plugin-files.test.ts` |
+| AC-55S220.3 (`/quack:install` derives + confirms sub-project slug; `--sub` arg) | `plugins/quack/commands/install.md` | `tests/plugin-files.test.ts` |
 | AC-55S220.4 (delete `plugins/quack/mcp-servers/quack.json`; server declared only by `.mcp.json`) | `plugins/quack/` (file removed) | `tests/plugin-files.test.ts`, `tests/bundled-hooks-shape.test.ts`, `tests/plugin-install-local.test.ts` |
 | AC-55S220.5 (hooks read config from `.mcp.json` instead of `process.env`) | `plugins/quack/hooks/_lib/config.ts` | `plugins/quack/hooks/_lib/__tests__/config.test.ts` |
 | AC-55S220.6 (README install flows drop the legacy env-var config steps and document the `.mcp.json` flow) | `plugins/quack/README.md`, `README.md` | `tests/m8-config-delivery-docs.test.ts` |
-| AC-55S220.7 (committed-literal-token tradeoff documented — install output, README, ADR) | `plugins/quack/commands/quack-install.md`, `plugins/quack/README.md`, `specs/technical-spec.md` | `tests/m8-config-delivery-docs.test.ts` |
-| AC-55S220.8 (tests — `quack-install.md` shape, plugin shape/hermeticity updates, `config.ts` reader) | n/a — test-only | `tests/plugin-files.test.ts`, `tests/bundled-hooks-shape.test.ts`, `tests/plugin-install-local.test.ts`, `plugins/quack/hooks/_lib/__tests__/config.test.ts` |
+| AC-55S220.7 (committed-literal-token tradeoff documented — install output, README, ADR) | `plugins/quack/commands/install.md`, `plugins/quack/README.md`, `specs/technical-spec.md` | `tests/m8-config-delivery-docs.test.ts` |
+| AC-55S220.8 (tests — `install.md` shape, plugin shape/hermeticity updates, `config.ts` reader) | n/a — test-only | `tests/plugin-files.test.ts`, `tests/bundled-hooks-shape.test.ts`, `tests/plugin-install-local.test.ts`, `plugins/quack/hooks/_lib/__tests__/config.test.ts` |
 | AC-55S220.9 (traceability matrix refresh + cross-cutting `.mcp.json` prose correction) | `specs/requirements.md`, `specs/technical-spec.md` | `tests/m8-config-delivery-docs.test.ts` |
 | AC-WB3N9H.1–11 (ask_memory agentic planned-mode tool) | `src/mcp/tools/memory/ask_memory.ts`, `src/mcp/tools/memory/ask_loop.ts`, `src/mcp/memory/ask_prompt.ts`, `src/mcp/memory/ask_client.ts`, `src/shared/env.ts`, `src/mcp/server.ts`, `src/server/index.ts` | `src/mcp/tools/memory/ask_memory.test.ts`, `src/mcp/tools/memory/ask_loop.test.ts`, `src/mcp/memory/ask_prompt.test.ts`, `src/mcp/memory/ask_client.test.ts`, `src/mcp/tools/memory/cross_tenant.test.ts` |

@@ -86,7 +86,7 @@ plugins/quack/
 │   ├── stop.sh                    # 2-line bunx wrapper → _lib/entry/stop.ts
 │   ├── post_tool_use.sh           # 2-line bunx wrapper → _lib/entry/post_tool_use.ts
 │   └── _lib/                      # canonical TS hook sources (dispatch/redact/post/config/payload + entries)
-├── commands/quack-install.md      # /quack:install <slug>
+├── commands/install.md            # /quack:install <slug>
 └── README.md                      # this file
 ```
 
