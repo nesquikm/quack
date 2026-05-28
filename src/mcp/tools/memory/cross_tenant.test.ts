@@ -13,7 +13,7 @@ import { pathBetween } from "./path_between";
 import { recentDecisions } from "./recent_decisions";
 import { addMemory } from "./add_memory";
 import { askMemory } from "./ask_memory";
-import type { AskClient, AskTurn } from "./ask_loop";
+import type { AskClient, AskCompletion } from "./ask_loop";
 import { BoundedQueue } from "../../../extract/queue";
 import { writeExtraction } from "../../../extract/writer";
 import type { ExtractionResult } from "../../../extract/client";
@@ -245,10 +245,10 @@ describe("memory tools — cross-tenant isolation (integration)", () => {
   test("AC-WB3N9H.9: ask_memory with project-A ctx never surfaces project-B nodes", async () => {
     if (!dockerOk || !adapter) return;
 
-    function scriptedClient(turns: AskTurn[]): AskClient {
+    function scriptedClient(turns: AskCompletion[]): AskClient {
       const queue = [...turns];
       return {
-        async next(): Promise<AskTurn> {
+        async complete(): Promise<AskCompletion> {
           const t = queue.shift();
           if (!t) throw new Error("scripted client exhausted");
           return t;
@@ -259,8 +259,8 @@ describe("memory tools — cross-tenant isolation (integration)", () => {
     // The model searches for the overlapping entity name then answers, echoing
     // whatever ids it observed (so a leak would show up in the answer text too).
     const client = scriptedClient([
-      { type: "tool_calls", calls: [{ tool: "search_memory", args: { entities: ["auth"], types: ["Entity"], limit: 20 } }] },
-      { type: "answer", text: "the auth entity for this project" },
+      { content: null, toolCalls: [{ id: "c1", name: "search_memory", args: { entities: ["auth"], types: ["Entity"], limit: 20 } }] },
+      { content: "the auth entity for this project", toolCalls: [] },
     ]);
 
     const out = await askMemory({ question: "what do we know about auth?" }, ctxA, adapter, { client });

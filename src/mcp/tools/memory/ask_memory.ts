@@ -9,11 +9,11 @@ import { z } from "zod";
 import type { GraphAdapter } from "../../../graph/adapter";
 import { MemoryToolError } from "../../errors";
 import { createRedactor } from "../../../extract/redact";
-import { runAskLoop, type AskClient, type AskTurn, type AskLoopResult } from "./ask_loop";
+import { runAskLoop, type AskClient, type AskLoopResult } from "./ask_loop";
 import { subProjectsSchema, type AuthContext } from "./_shared";
 import { getAskMaxIterations, getAskMaxToolCalls } from "../../../shared/env";
 
-export type { AskClient, AskTurn };
+export type { AskClient };
 
 export const askMemorySchema = z.object({
   question: z.string().min(1),

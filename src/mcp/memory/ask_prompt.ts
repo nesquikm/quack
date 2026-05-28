@@ -37,4 +37,7 @@ retrieved results do not contain enough information to answer, say so plainly
 rather than guessing. Do not invent facts that are not grounded in retrieved
 results.
 
-Return your final answer wrapped in a single <memory>...</memory> block.`;
+Call the tools to gather what you need — start with search_memory, then follow
+a few hops with get_neighbors / path_between / recent_decisions if useful. When
+you have enough, reply with a concise plain-text answer. The server wraps your
+answer for the caller; do not add any wrapping yourself.`;
