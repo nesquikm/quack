@@ -388,7 +388,8 @@ export function buildMcpServer(): McpServer {
   );
 
   // AC-WB3N9H.1: planned "ask" tool — member-readable, NOT in ADMIN_TOOLS.
-  // Description is a placeholder pending AC-WB3N9H.11's exact manifest wording.
+  // Description satisfies AC-WB3N9H.11 (planning + <memory>/untrusted + current-state
+  // only + QUACK_MODEL_* requirement); asserted by ask_memory.test.ts.
   reg(
     "ask_memory",
     `Plans a multi-step traversal over the project's memory graph to answer a question; requires QUACK_MODEL_* to be configured. ${MEMORY_CLAUSE}`,

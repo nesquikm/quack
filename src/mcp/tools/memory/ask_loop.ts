@@ -59,7 +59,7 @@ const PRIMITIVES: Record<string, Primitive> = {
 };
 
 export async function runAskLoop(
-  { question }: { question: string },
+  { question, sub_projects }: { question: string; sub_projects?: string[] },
   ctx: AuthContext,
   deps: AskLoopDeps,
 ): Promise<AskLoopResult> {
@@ -111,7 +111,15 @@ export async function runAskLoop(
       toolCallsUsed += 1;
       toolCallExplain.push({ tool: call.tool, iteration });
 
-      const env = await primitive(call.args as never, ctx, graph);
+      // Enforce the caller's sub_projects scope on every internal primitive
+      // call: when ask_memory was given sub_projects, it overrides whatever the
+      // model put in the call args — the model cannot widen recall past it.
+      const baseArgs =
+        call.args && typeof call.args === "object" ? (call.args as Record<string, unknown>) : {};
+      const callArgs =
+        sub_projects && sub_projects.length > 0 ? { ...baseArgs, sub_projects } : call.args;
+
+      const env = await primitive(callArgs as never, ctx, graph);
 
       coverage.matched_entities += env.meta.coverage.matched_entities;
       coverage.traversals += env.meta.coverage.traversals;
