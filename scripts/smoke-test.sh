@@ -30,7 +30,15 @@ MODEL=0; [ -n "${QUACK_MODEL_API_KEY:-}" ] && [ -n "${QUACK_MODEL_BASE_URL:-}" ]
 
 ADMIN="$QUACK_BOOTSTRAP_TOKEN"; URL="http://127.0.0.1:7474"
 TMPCLIENT="$(mktemp -d)"
-cleanup() { echo "== teardown =="; docker compose down -v >/dev/null 2>&1 || true; rm -rf "$TMPCLIENT"; }
+cleanup() {
+  echo "== teardown =="
+  # `--rmi local` drops the compose-built quack image (disposable, rebuilt next
+  # run) but NOT the pulled neo4j:5-community (re-pulling it is slow). Prune the
+  # build cache too so repeated runs don't accumulate Docker cruft.
+  docker compose down -v --rmi local >/dev/null 2>&1 || true
+  docker builder prune -f >/dev/null 2>&1 || true
+  rm -rf "$TMPCLIENT"
+}
 trap cleanup EXIT
 
 CT='content-type: application/json'; AC='accept: application/json, text/event-stream'

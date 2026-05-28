@@ -64,8 +64,10 @@ MCP transport, real Gemini/OpenAI extraction + `ask_memory`, and real hook →
    the pass/fail tally and surface any `❌` lines with the captured response.
    Non-zero exit ⇒ a real failure; investigate with `docker compose logs quack`.
 
-4. The script tears the stack down (`docker compose down -v`) and removes its
-   temp client dir on exit — no manual cleanup needed. The `neo4j:5-community`
+4. The script tears the stack down on exit and removes its temp client dir — no
+   manual cleanup needed. Teardown runs `docker compose down -v --rmi local`
+   (drops the compose-built quack image + volumes) plus `docker builder prune -f`,
+   so repeated runs don't accumulate Docker cruft. The pulled `neo4j:5-community`
    image is left cached (re-pulling it is slow).
 
 ## Optional — exercise the real `/quack:install` command
