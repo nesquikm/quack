@@ -2,6 +2,10 @@
 
 A personal, per-project memory layer for Claude Code.
 
+<p align="center">
+  <img src="assets/quack.jpg" alt="Quack - a personal memory layer for Claude Code" width="600">
+</p>
+
 ## How it works
 
 Quack gives Claude Code a persistent memory that survives across sessions.
@@ -55,7 +59,7 @@ precompile / no PATH plumbing. From a clone of this repo:
 docker compose up -d
 
 # 2. Install the plugin (one-time).
-claude plugin marketplace add ./
+claude plugin marketplace add nesquikm/quack
 claude plugin install quack@quack
 
 # 3. Bind each workspace (repeat per workspace).
@@ -134,7 +138,7 @@ live under [Deployment → Hooks installation](#hooks-installation-claude-code--
 ## Deployment
 
 > **Audience:** server operators running the Docker stack. End users should
-> follow the plugin install path above instead — `claude plugin marketplace add ./`
+> follow the plugin install path above instead — `claude plugin marketplace add nesquikm/quack`
 > + `claude plugin install quack@quack` wraps every step in this section.
 
 Quack ships as a Docker Compose stack. Compose v2 (the `docker compose` CLI
