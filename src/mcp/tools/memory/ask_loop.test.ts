@@ -259,6 +259,32 @@ describe("runAskLoop", () => {
     expect(lastInput).toContain("d1");
   });
 
+  // AC-WB3N9H.1 — the caller's sub_projects scope is forced onto every internal
+  // primitive call (the model cannot widen recall past it).
+  test("AC-WB3N9H.1: caller sub_projects is threaded into every primitive call", async () => {
+    const captured: unknown[] = [];
+    const adapter = {
+      async run(_templateId: string, params: unknown) {
+        captured.push(params);
+        return { rows: [] };
+      },
+    } as unknown as GraphAdapter;
+    const client = scriptedClient([
+      { type: "tool_calls", calls: [{ tool: "search_memory", args: { entities: ["auth"] } }] },
+      { type: "answer", text: "ok" },
+    ]);
+
+    await runAskLoop(
+      { question: "q", sub_projects: ["backend"] },
+      ctx,
+      { client, graph: adapter, maxIterations: 3, maxToolCalls: 8 },
+    );
+
+    // searchMemory forwards sub_projects into the graph template params, so the
+    // caller-supplied scope must appear in the params the adapter received.
+    expect(captured.some((p) => JSON.stringify(p).includes("backend"))).toBe(true);
+  });
+
   // AC-WB3N9H.5 — coverage.truncated true if any internal call truncated.
   test("AC-WB3N9H.5: coverage.truncated true when an internal call truncated", async () => {
     const rows = Array.from({ length: 20 }).map((_, i) => ({

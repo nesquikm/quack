@@ -39,7 +39,7 @@ export async function askMemory(
     );
   }
 
-  const loopOut = await runAskLoop({ question: args.question }, ctx, {
+  const loopOut = await runAskLoop({ question: args.question, sub_projects: args.sub_projects }, ctx, {
     client,
     graph,
     redactor: createRedactor(),
