@@ -11,7 +11,7 @@ A personal memory layer for Claude Code: hooks stream session context to a local
 - **Testing:** `bun test` (auto-imports from `bun:test`)
 - **Typecheck:** `bunx tsc --noEmit` (strict, `module: ESNext`, `moduleResolution: Bundler`)
 - **Validation:** TBD (Zod / TypeBox candidates — decide during M2 / spec-write)
-- **Graph DB:** TBD (Kùzu embedded / Neo4j / Memgraph / SQLite-with-edges — open question per BRIEF.md §3)
+- **Graph DB:** Neo4j 5 Community (Bolt via `neo4j-driver`; chosen over Kùzu / Memgraph / SQLite-with-edges)
 
 ## Architecture
 
@@ -21,7 +21,7 @@ src/
 └── .placeholder.test.ts  # Bun zero-match workaround (delete once first real test lands)
 ```
 
-The target architecture (per BRIEF.md) is:
+The target architecture is:
 
 ```
 Claude Code hooks ──► Ingest server ──► cheap-model extractor ──► Graph DB
@@ -74,11 +74,10 @@ bunx tsc --noEmit && bun run test
 
 ## Key Patterns
 
-<!-- TODO: fill in as patterns emerge. Candidates from BRIEF.md: -->
-<!-- - Hooks are fire-and-forget — never block the Claude Code session on the cheap model -->
-<!-- - Recalled memory is wrapped in `<memory>…</memory>` and treated as untrusted text (prompt-injection laundering defense) -->
-<!-- - Auth is a single bearer token (env var) shared by ingest + MCP; no user accounts in v1 -->
-<!-- - Bind MCP to localhost / Tailscale / SSH unless explicitly exposed -->
+- **Hooks are fire-and-forget** — never block the Claude Code session on the cheap-model extractor; queue locally and return immediately.
+- **Recalled memory is untrusted** — wrapped in `<memory>…</memory>` at the MCP boundary and treated as untrusted text (prompt-injection laundering defense).
+- **Multi-tenant bearer auth** — each token authenticates one `(user, project)` pair; ingest + MCP share the scheme. An admin bootstraps from `QUACK_BOOTSTRAP_TOKEN` on first boot.
+- **Loopback by default** — bind the server to `127.0.0.1`; expose beyond localhost only behind Tailscale / SSH and an explicit decision.
 
 ## Testing Conventions
 
