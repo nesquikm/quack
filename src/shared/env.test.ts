@@ -85,9 +85,9 @@ describe("parseEnv", () => {
   });
 
   // AC-WB3N9H.4 — ask_memory loop caps. Both positive-int, defaulted.
-  test("AC-WB3N9H.4: QUACK_ASK_MAX_ITERATIONS defaults to 3", () => {
+  test("AC-WB3N9H.4: QUACK_ASK_MAX_ITERATIONS defaults to 5", () => {
     const env = parseEnv({ QUACK_NEO4J_PASSWORD: "pw" });
-    expect((env as unknown as { QUACK_ASK_MAX_ITERATIONS: number }).QUACK_ASK_MAX_ITERATIONS).toBe(3);
+    expect((env as unknown as { QUACK_ASK_MAX_ITERATIONS: number }).QUACK_ASK_MAX_ITERATIONS).toBe(5);
   });
 
   test("AC-WB3N9H.4: QUACK_ASK_MAX_TOOL_CALLS defaults to 8", () => {

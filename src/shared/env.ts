@@ -49,8 +49,10 @@ const envSchema = z.object({
   QUACK_ADD_MEMORY_MAX_BYTES: z.coerce.number().int().positive().default(32768),
 
   // ask_memory planned-mode loop caps (FR-WB3N9H). When either is hit the loop
-  // stops and forces a single synthesis turn.
-  QUACK_ASK_MAX_ITERATIONS: z.coerce.number().int().positive().default(3),
+  // stops and forces a single synthesis turn. Default iterations raised 3→5
+  // post-ship: a live run showed multi-hop questions exhaust 3 turns while still
+  // exploring, firing budget_exhausted before the model could answer on its own.
+  QUACK_ASK_MAX_ITERATIONS: z.coerce.number().int().positive().default(5),
   QUACK_ASK_MAX_TOOL_CALLS: z.coerce.number().int().positive().default(8),
 });
 
@@ -90,7 +92,7 @@ export function getAddMemoryMaxBytes(
 // getAddMemoryMaxBytes: each reads only its own var so import-time / unit-test
 // callers don't need a fully-populated env (e.g., QUACK_NEO4J_PASSWORD unset).
 // Same default + coercion semantics as the full schema.
-const askMaxIterationsSchema = z.coerce.number().int().positive().default(3);
+const askMaxIterationsSchema = z.coerce.number().int().positive().default(5);
 export function getAskMaxIterations(
   source: Record<string, string | undefined> = Bun.env,
 ): number {
