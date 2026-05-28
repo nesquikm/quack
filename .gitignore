@@ -11,3 +11,5 @@ coverage/
 .*.bun-build
 # Local /implement claim locks (mode: none).
 .dpt-locks/
+# Claude Code scheduled-task runtime lock (transient harness artifact).
+.claude/scheduled_tasks.lock
