@@ -1,6 +1,6 @@
 {
   "name": "quack",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Personal memory layer for Claude Code: hooks stream session context to a local ingest server, a cheap LLM extracts entities/relations into a graph DB, and an MCP server exposes search/RAG back to Claude Code.",
   "private": true,
   "type": "module",
