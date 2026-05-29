@@ -10,27 +10,36 @@ A personal memory layer for Claude Code: hooks stream session context to a local
 - **Runtime:** Bun 1.3.x (ESM-only, single binary)
 - **Testing:** `bun test` (auto-imports from `bun:test`)
 - **Typecheck:** `bunx tsc --noEmit` (strict, `module: ESNext`, `moduleResolution: Bundler`)
-- **Validation:** TBD (Zod / TypeBox candidates — decide during M2 / spec-write)
+- **Validation:** Zod 4 (`zod`)
 - **Graph DB:** Neo4j 5 Community (Bolt via `neo4j-driver`; chosen over Kùzu / Memgraph / SQLite-with-edges)
 
 ## Architecture
 
 ```
 src/
-├── index.ts            # entry stub (M1)
-└── .placeholder.test.ts  # Bun zero-match workaround (delete once first real test lands)
+├── index.ts    # server entry
+├── server/     # HTTP routing, loopback bind, /health
+├── auth/       # bearer-token auth + bootstrap + SQLite token store
+├── ingest/     # /ingest — accepts redacted hook envelopes
+├── extract/    # cheap-model pipeline: queue → consumer → redact → writer,
+│               #   plus dead-letter + cleanup sweeper
+├── graph/      # Neo4j adapter, driver, migrations, templates
+├── mcp/        # MCP server, tool surface, admin/member gate
+├── admin/      # admin-plane DTOs + handlers
+├── metrics/    # counters
+└── shared/     # env, logger, slug helpers
 ```
 
-The target architecture is:
+The pipeline is live end-to-end:
 
 ```
-Claude Code hooks ──► Ingest server ──► cheap-model extractor ──► Graph DB
-                                                                     ▲
-                                                                     │ MCP tools
-Claude Code ◄────────────────────────────────────────────────────────┘
+Claude Code hooks ──► /ingest ──► cheap-model extractor ──► Neo4j graph
+                                                              ▲
+                                                              │ MCP tools
+Claude Code  ◄────────────────────────────────────────────────┘
 ```
 
-The directory layout will fill in as M2+ ships the ingest server, extractor, and MCP surface.
+Specs live under `specs/`:
 
 ```
 specs/
@@ -88,7 +97,7 @@ bunx tsc --noEmit && bun run test
   external tools (Docker, Compose) live under top-level `tests/` — landed for
   FR-BKPM28. Those tests skip when the relevant tool's daemon is unreachable
   so local Bun-only runs stay green.
-- **Coverage target:** TBD — set once the first non-trivial module lands
+- **Coverage target:** none enforced — the merge gate is `bunx tsc --noEmit && bun run test` green, with tests written per-AC under TDD (`/tdd`). No numeric threshold.
 
 ## DO NOT
 
