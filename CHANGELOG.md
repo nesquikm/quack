@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] — 2026-05-29 — "Litmus"
+
+### Added
+
+- **FR-D17E0R** — Comprehensive full-stack smoke round-trips for all MCP tools + hooks. Replaces the smoke's shallow read-path coverage (empty-data reads, not-error admin checks, counter-only hook check) with positive round-trips proving each MCP tool and each hook stores + retrieves correct data end-to-end through the real cheap model. `scripts/smoke-test.sh` keeps the Compose lifecycle, the `MODEL` gate, token minting, and teardown, and (model-gated) delegates the assertions to a new bun driver `scripts/smoke-assertions.ts`, invoked as `bun scripts/smoke-assertions.ts <url> <admin> <member> <slug>` with its exit propagated. The driver runs: a discover→traverse memory read round-trip (`add_memory` → `search_memory` → `get_neighbors` → `path_between` → `recent_decisions` → `ask_memory`); hook round-trips proven by content for `session_start`/`post_tool_use`/`stop`, plus a `META_TOOLS` `post_tool_use` fired through the real hook entry that must **not** surface (an end-to-end check of the M10 / FR-Z1W6ED denoise); and admin data-effect assertions with the destructive lifecycle (`revoke_token` → `remove_member` → `delete_project`) ordered last. `revoke_token`'s `token_id` — which no MCP tool exposes — is read from the container's `auth.sqlite` and threaded via `QUACK_SMOKE_MEMBER_TOKEN_ID`, preserving the 4-arg driver signature. Assertions are tolerant/semantic with bounded poll to absorb model non-determinism; the driver's decision logic is factored into 15 pure helpers unit-tested by `scripts/smoke-assertions.test.ts` (48 cases, no live stack), while the live round-trips are proven by the smoke run. `tsconfig.json` gains `scripts/**/*.ts` so the gate typechecks the driver. Maintainer test infrastructure only — no runtime or user-facing behavior changed.
+
+Total test count at release: 649 tests, 0 failures, 0 errors.
+
 ## [0.7.0] — 2026-05-29 — "Bouncer"
 
 ### Added
