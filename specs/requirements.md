@@ -191,3 +191,4 @@ The server bootstraps an admin from `QUACK_BOOTSTRAP_TOKEN` on first start; admi
 | AC-Z1W6ED.1 (META_TOOLS meta/tool-search hook drop) | `plugins/quack/hooks/_lib/shared/meta_tools.ts`, `plugins/quack/hooks/_lib/dispatch.ts` | `plugins/quack/hooks/_lib/__tests__/meta_tools.test.ts` |
 | AC-Z1W6ED.2 + AC-Z1W6ED.3 + AC-Z1W6ED.5 (decision-worthiness gate; entity extraction preserved; explicit_add never down-graded) | `src/extract/prompt.ts`, `src/extract/client.ts` | `src/extract/decision_gate.test.ts` |
 | AC-Z1W6ED.4 (envelope `kind` recorded as node `source` provenance) | `src/extract/writer.ts`, `src/extract/consumer.ts` | `src/extract/origin_kind.test.ts` |
+| AC-D17E0R.1..6 (comprehensive full-stack smoke round-trips for all MCP tools + hooks) | `scripts/smoke-test.sh`, `scripts/smoke-assertions.ts`, `tsconfig.json`, `.claude/skills/smoke-test/SKILL.md` | `scripts/smoke-assertions.test.ts` (pure-helper logic); live round-trips via `bash scripts/smoke-test.sh` |
