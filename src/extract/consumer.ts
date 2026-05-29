@@ -52,6 +52,7 @@ export function startConsumer(opts: ConsumerOptions): Consumer {
       if (matchCount > 0) incrementError("redaction_match");
       const result = await client.extract({ kind: env.kind, payload: redactedPayload });
       await writeExtraction(adapter, env.ctx, result, new Date().toISOString(), {
+        kind: env.kind,
         sub_project: env.sub_project,
       });
     } catch (err) {

@@ -1,6 +1,13 @@
 import { z } from "zod";
 import OpenAI from "openai";
-import { SYSTEM_PROMPT, EXTRACTION_JSON_SCHEMA, buildUserPrompt, NODE_KINDS, RELATION_TYPES, SYMBOL_KINDS, SENTIMENTS } from "./prompt";
+import { buildSystemPrompt, EXTRACTION_JSON_SCHEMA, buildUserPrompt, NODE_KINDS, RELATION_TYPES, SYMBOL_KINDS, SENTIMENTS } from "./prompt";
+
+// AC-Z1W6ED.2/.5 — the extract input carries the originating envelope `kind`
+// ({ kind, payload }); the system prompt is built per-kind so passive kinds get
+// the decision-worthiness gate and explicit_add gets the override.
+function kindOf(payload: unknown): string | undefined {
+  return (payload as { kind?: string } | null | undefined)?.kind;
+}
 
 // Server-side Zod schema mirrors EXTRACTION_JSON_SCHEMA. Used to validate the
 // model's response BEFORE the graph write — parse failure ⇒ dead-letter +
@@ -81,7 +88,7 @@ export function createExtractionClient(opts: ExtractionClientOptions): Extractio
     const res = await client.chat.completions.create({
       model: opts.modelName,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: buildSystemPrompt(kindOf(payload)) },
         { role: "user", content: buildUserPrompt(payload) },
       ],
       response_format: {
@@ -96,7 +103,7 @@ export function createExtractionClient(opts: ExtractionClientOptions): Extractio
     const res = await client.chat.completions.create({
       model: opts.modelName,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: buildSystemPrompt(kindOf(payload)) },
         { role: "user", content: buildUserPrompt(payload) },
       ],
       response_format: { type: "json_object" },

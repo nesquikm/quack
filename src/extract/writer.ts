@@ -33,14 +33,36 @@ interface EndpointKey {
 // model-supplied-project_id override path.
 interface WriteEnvelope {
   sub_project?: string;
+  // AC-Z1W6ED.4 — the originating envelope `kind` (session_start | stop |
+  // post_tool_use | explicit_add), folded into the node `source` provenance set.
+  kind?: string;
 }
 
-// Re-validates the envelope sub-project against the slug regex (defense-in-depth)
-// and resolves it to a $source list: a single-element array when valid, [] otherwise.
+// AC-Z1W6ED.4 — valid originating envelope kinds. Re-validated (defense-in-depth)
+// before being recorded as provenance so a malformed/absent kind is dropped.
+// NOTE: must stay in sync with `HookKindSchema` in
+// plugins/quack/hooks/_lib/shared/envelope.ts — the canonical kind union. The
+// server-side writer deliberately does not import from the plugin tree, so a new
+// hook kind added there must be mirrored here or its provenance is silently dropped.
+const VALID_ORIGIN_KINDS: ReadonlySet<string> = new Set([
+  "session_start",
+  "stop",
+  "post_tool_use",
+  "explicit_add",
+]);
+
+// Resolves the envelope to the node `$source` provenance SET: the originating
+// envelope `kind` first (AC-Z1W6ED.4), then the validated sub-project
+// (AC-A9BN0M.4) when present. Both are re-validated here (defense-in-depth).
+// Folding the kind into `source` is filter-safe — the sub_projects recall
+// predicate only matches real sub-project slugs, which an envelope kind never is.
 function resolveSource(envelope?: WriteEnvelope): string[] {
+  const out: string[] = [];
+  const k = envelope?.kind;
+  if (typeof k === "string" && VALID_ORIGIN_KINDS.has(k)) out.push(k);
   const sp = envelope?.sub_project;
-  if (typeof sp === "string" && SLUG_RE.test(sp)) return [sp];
-  return [];
+  if (typeof sp === "string" && SLUG_RE.test(sp)) out.push(sp);
+  return out;
 }
 
 function endpointKeyOf(kind: string, name: string): string {
