@@ -281,6 +281,172 @@ describe("MCP server integration (SDK + streamable HTTP transport)", () => {
     }
   });
 
+  // ── FR-ATBKZV: typed MCP tool inputSchema (schema-driven clients) ──────────
+
+  async function listToolsViaHttp(port: number): Promise<
+    Array<{ name: string; description: string; inputSchema?: { type?: string; properties?: Record<string, unknown> } }>
+  > {
+    const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+      body: rpc("tools/list").body,
+    });
+    if (res.status !== 200) throw new Error(`tools/list failed: HTTP ${res.status} body=${await res.text()}`);
+    const body = (await res.json()) as JsonRpcResponse;
+    return (body.result as { tools: Array<{ name: string; description: string; inputSchema?: { type?: string; properties?: Record<string, unknown> } }> }).tools;
+  }
+
+  test("AC-ATBKZV.1: tools/list advertises typed inputSchema for search_memory (entities/types/sub_projects arrays, limit integer)", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const tools = await listToolsViaHttp(server.port!);
+      const t = tools.find((x) => x.name === "search_memory");
+      expect(t).toBeDefined();
+      const props = t!.inputSchema?.properties as
+        | Record<string, { type?: string; items?: { type?: string } }>
+        | undefined;
+      expect(props).toBeDefined();
+
+      // entities — typed array of strings, NOT a string/passthrough blob.
+      expect(props!.entities).toBeDefined();
+      expect(props!.entities!.type).toBe("array");
+      expect(props!.entities!.items?.type).toBe("string");
+
+      // types / sub_projects — arrays.
+      expect(props!.types).toBeDefined();
+      expect(props!.types!.type).toBe("array");
+      expect(props!.sub_projects).toBeDefined();
+      expect(props!.sub_projects!.type).toBe("array");
+
+      // limit — integer.
+      expect(props!.limit).toBeDefined();
+      expect(props!.limit!.type).toBe("integer");
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("AC-ATBKZV.4: arg-bearing tools advertise typed properties; no-arg tools advertise an empty object schema (no phantom props)", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const tools = await listToolsViaHttp(server.port!);
+
+      // Sanity: the registry surface is exposed (no silent empty list).
+      const advertised = tools.map((t) => t.name).sort();
+      expect(advertised).toEqual(listTools());
+
+      // Genuinely no-arg tools (z.object({}) schemas) advertise a VALID empty
+      // object schema — zero-key properties, NEVER a phantom placeholder
+      // (AC-ATBKZV.4, narrowed during /implement M10). Every other tool
+      // advertises its real, non-empty typed properties.
+      const NO_ARG_TOOLS = new Set([
+        "cleanup_status",
+        "list_projects",
+        "list_users",
+        "run_cleanup_now",
+        "server_status",
+      ]);
+
+      for (const t of tools) {
+        const props = t.inputSchema?.properties ?? {};
+        if (NO_ARG_TOOLS.has(t.name)) {
+          expect(
+            Object.keys(props).length,
+            `no-arg tool ${t.name} must advertise an empty object schema (no phantom props)`,
+          ).toBe(0);
+        } else {
+          expect(
+            Object.keys(props).length,
+            `arg-bearing tool ${t.name} must advertise non-empty typed properties (no z.looseObject({}) passthrough)`,
+          ).toBeGreaterThan(0);
+        }
+      }
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("AC-ATBKZV.2: schema-driven call to search_memory with array entities reaches the handler (no invalid_args)", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+        body: rpc("tools/call", { name: "search_memory", arguments: { entities: ["x"] } }).body,
+      });
+      // The SDK must NOT reject the array arg with a JSON-RPC -32602; it must
+      // forward it to the handler so dispatch happens normally.
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as JsonRpcResponse;
+      expect(body.error).toBeUndefined();
+      const result = body.result as { isError?: boolean; content: Array<{ text: string }> };
+      const payload = JSON.parse(result.content[0]!.text) as { error?: string };
+      // The array dispatches to the handler; with skipGraph the handler reports
+      // no_graph_adapter — proving the array arrived (NOT invalid_args, NOT -32602).
+      expect(payload.error).not.toBe("invalid_args");
+      expect(payload.error).toBe("no_graph_adapter");
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("AC-ATBKZV.3: AC-WSFVNP.10 preserved — search_memory {entities:5} → invalid_args (not -32602), no graph call", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+        body: rpc("tools/call", { name: "search_memory", arguments: { entities: 5 } }).body,
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as JsonRpcResponse;
+      // Must NOT be a raw JSON-RPC -32602; the handler safeParse stays the authority.
+      expect(body.error).toBeUndefined();
+      const result = body.result as { isError?: boolean; content: Array<{ text: string }> };
+      expect(result.isError).toBe(true);
+      const payload = JSON.parse(result.content[0]!.text) as { error: string; issues: Array<{ path: unknown[]; message: string }> };
+      expect(payload.error).toBe("invalid_args");
+      expect(Array.isArray(payload.issues)).toBe(true);
+      expect(payload.issues.length).toBeGreaterThanOrEqual(1);
+      expect(payload.issues[0]!.path).toContain("entities");
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
+  test("AC-ATBKZV.3: AC-WSFVNP.10 preserved — search_memory {} (missing required entities) → invalid_args (not -32602)", async () => {
+    const { server, db } = await startTestServer();
+    try {
+      await initialize(server.port!, BOOTSTRAP);
+      const res = await fetch(`http://127.0.0.1:${server.port!}/mcp`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${BOOTSTRAP}`, ...MCP_HEADERS },
+        body: rpc("tools/call", { name: "search_memory", arguments: {} }).body,
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as JsonRpcResponse;
+      expect(body.error).toBeUndefined();
+      const result = body.result as { isError?: boolean; content: Array<{ text: string }> };
+      expect(result.isError).toBe(true);
+      const payload = JSON.parse(result.content[0]!.text) as { error: string; issues: Array<{ path: unknown[]; message: string }> };
+      expect(payload.error).toBe("invalid_args");
+      expect(Array.isArray(payload.issues)).toBe(true);
+      expect(payload.issues.length).toBeGreaterThanOrEqual(1);
+      expect(payload.issues[0]!.path).toContain("entities");
+    } finally {
+      server.stop(true);
+      db.close();
+    }
+  });
+
   test("a member token (non-admin) can call search_memory but no_graph_adapter surfaces because skipGraph", async () => {
     const { server, db } = await startTestServer();
     try {
