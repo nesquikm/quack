@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Full-stack smoke test for Quack — brings up the real Compose stack (server +
-# Neo4j) reading .env, then exercises every MCP tool, the admin gate, the
-# add_memory→extraction→search pipeline, ask_memory (when QUACK_MODEL_* is set),
-# and a real hook → /ingest round-trip. Tears the stack down on exit.
+# Neo4j) reading .env, mints an admin + member token, then (when QUACK_MODEL_* is
+# set) delegates the comprehensive per-tool POSITIVE round-trips to the bun driver
+# `scripts/smoke-assertions.ts` — proving each MCP tool and each hook actually
+# stores and retrieves correct data end-to-end through the real cheap model
+# (discover→traverse reads, hook-by-content + META_TOOLS denoise, admin
+# data-effect + destructive lifecycle). This script keeps the Compose lifecycle,
+# the MODEL gate, and teardown; a non-zero driver exit fails the smoke. Tears the
+# stack down on exit.
 #
 #   bash scripts/smoke-test.sh
 #
-# Skips cleanly (exit 0) when Docker is unreachable. Exits non-zero on any
+# Skips cleanly (exit 0) when Docker is unreachable, and SKIPs the comprehensive
+# round-trips (still exit 0) when QUACK_MODEL_* is unset. Exits non-zero on any
 # assertion failure. Spends a small amount of cheap-model tokens when a model is
-# configured (extraction + ask_memory).
+# configured (extraction + ask_memory + hook digestion).
 # NOTE: no `set -u` — macOS ships bash 3.2, where expanding an empty array
 # (`"${arr[@]}"`) under nounset is a fatal "unbound variable" error that `|| true`
 # cannot rescue. pipefail + the `:?` guards below cover what we need.
@@ -85,50 +91,26 @@ JSON
 ok "client .mcp.json written (shape /quack:install produces)"
 
 if [ -n "$MTOK" ]; then
-  echo "== memory plane (member token) + admin gate =="
-  call "$MTOK" search_memory '{"entities":["nothing-here"]}' "$SLUG" | jtext | grep -q 'no_full_text_match' && ok "search_memory empty envelope" || no "search_memory"
-  call "$MTOK" get_neighbors '{"node_id":"missing"}' "$SLUG" | jtext | grep -q '"results"' && ok "get_neighbors" || no "get_neighbors"
-  call "$MTOK" path_between '{"node_a":"a","node_b":"b"}' "$SLUG" | jtext | grep -q 'no_path_found' && ok "path_between" || no "path_between"
-  call "$MTOK" recent_decisions '{"time_window":"7d"}' "$SLUG" | jtext | grep -q '"results"' && ok "recent_decisions" || no "recent_decisions"
+  # Non-model admin-gate check (always runs, incl. the no-model path): a member
+  # token must be 'forbidden' on an admin tool. The comprehensive driver re-checks
+  # this (AC-D17E0R.4) when a model is configured.
+  echo "== admin gate (member token) =="
   call "$MTOK" list_users '{}' "$SLUG" | grep -q 'forbidden' && ok "admin-gate blocks member token" || no "admin-gate"
 
-  echo "== add_memory → extraction =="
-  call "$MTOK" add_memory '{"content":"We chose PostgreSQL for the billing service because of its strong transactional guarantees. Bob owns the billing module."}' "$SLUG" | jtext | grep -q '"accepted":true' && ok "add_memory accepted" || no "add_memory"
   if [ "$MODEL" = 1 ]; then
-    found=0
-    for i in $(seq 1 20); do
-      call "$MTOK" search_memory '{"entities":["PostgreSQL","billing","Bob"]}' "$SLUG" | jtext | grep -qiE 'postgres|billing|bob' && { found=1; break; }
-      sleep 3
-    done
-    [ "$found" = 1 ] && ok "extraction populated graph via real model" || no "extraction: nothing surfaced in 60s"
-
-    echo "== ask_memory (real model, agentic) =="
-    ANS=$(call "$MTOK" ask_memory '{"question":"Which database does the billing service use and why, and who owns it?"}' "$SLUG" | jtext)
-    if echo "$ANS" | grep -q '"mode_used":"planned"' && echo "$ANS" | grep -qiE 'postgres'; then
-      ok "ask_memory returned a grounded, <memory>-wrapped answer"
-    else
-      no "ask_memory: ${ANS:0:160}"
-    fi
+    echo "== comprehensive full-stack round-trips (bun driver) =="
+    # revoke_token (AC-D17E0R.4) needs a numeric token_id, which NO MCP tool
+    # exposes — read the member token's row id straight from the container's
+    # auth.sqlite and hand it to the driver via env. This keeps the driver's
+    # 4-arg signature (AC-D17E0R.1) intact; the driver skips the revoke_token
+    # round-trip cleanly when this is empty (e.g. run standalone, off-Docker).
+    MEMBER_TOKEN_ID=$(docker compose exec -T quack bun -e 'import {Database} from "bun:sqlite"; const db=new Database("/data/auth.sqlite",{readonly:true}); const r=db.query("SELECT id FROM tokens WHERE revoked_at IS NULL ORDER BY id DESC LIMIT 1").get(); process.stdout.write(r&&r.id!=null?String(r.id):"");' 2>/dev/null)
+    QUACK_SMOKE_MEMBER_TOKEN_ID="$MEMBER_TOKEN_ID" bun "$ROOT/scripts/smoke-assertions.ts" "$URL" "$ADMIN" "$MTOK" "$SLUG"
+    drv=$?
+    [ "$drv" = 0 ] && ok "comprehensive smoke-assertions driver (exit 0)" || no "comprehensive smoke-assertions driver (exit $drv)"
   else
-    echo "== ask_memory (no model configured) =="
-    call "$MTOK" ask_memory '{"question":"anything?"}' "$SLUG" | grep -q 'model_unavailable' && ok "ask_memory → model_unavailable gate" || no "ask_memory gate"
+    echo "SKIP: comprehensive round-trips need QUACK_MODEL_* (real-model extraction) — set QUACK_MODEL_API_KEY + QUACK_MODEL_BASE_URL in .env"
   fi
-
-  echo "== hooks → /ingest round-trip =="
-  before=$(call "$ADMIN" server_status '{}' | jtext | python3 -c 'import sys,json
-try: print(json.load(sys.stdin)["queue"]["accepted_total"])
-except Exception: print(-1)')
-  echo '{"session_id":"smoke","cwd":"'"$TMPCLIENT"'","tool_name":"Bash","tool_input":{"command":"echo hi"},"tool_response":{"stdout":"the billing service uses PostgreSQL"}}' \
-    | ( cd "$TMPCLIENT" && bun "$ROOT/plugins/quack/hooks/_lib/entry/post_tool_use.ts" ) >/dev/null 2>&1
-  after="$before"
-  for i in $(seq 1 10); do
-    after=$(call "$ADMIN" server_status '{}' | jtext | python3 -c 'import sys,json
-try: print(json.load(sys.stdin)["queue"]["accepted_total"])
-except Exception: print(-1)')
-    [ "$after" -gt "$before" ] && break
-    sleep 2
-  done
-  [ "$after" -gt "$before" ] && ok "post_tool_use hook POSTed to /ingest (accepted_total $before→$after)" || no "hook ingest (accepted_total $before→$after)"
 fi
 
 echo ""

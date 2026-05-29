@@ -22,6 +22,6 @@
       "~/*": ["src/*"]
     }
   },
-  "include": ["src/**/*.ts", "plugins/quack/hooks/_lib/**/*.ts"],
+  "include": ["src/**/*.ts", "plugins/quack/hooks/_lib/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
