@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-05-29 — "Bouncer"
+
+### Added
+
+- **FR-Z1W6ED** — Ambient ingestion denoise. Keeps Quack's ambient auto-capture but stops noise from becoming `Decision` nodes, via a hybrid structural + semantic filter. **Structural (client hook):** a centralized `META_TOOLS` set (`plugins/quack/hooks/_lib/shared/meta_tools.ts`) lists the agent's own tool-search/introspection tools; `dispatch.ts` drops any `PostToolUse` whose `tool_name` is in the set before egress (fire-and-forget, exit 0), so introspection chatter never reaches `/ingest` or the cheap model. `SessionStart`, `Stop`, and non-meta `PostToolUse` are unaffected. **Semantic (extractor gate):** the extractor system prompt gains a decision-worthiness gate (`buildSystemPrompt(kind)` in `src/extract/prompt.ts`, wired through `src/extract/client.ts`) — a rubric plus pinned negative examples (the "SteamOS" gaming opinion, tool-search chatter) that withholds `Decision` status from casual conversation, opinions, and tool-meta activity while still extracting `Entity`/`File`/`Symbol`/`Feedback` nodes (denoise removes Decisions, not the entity graph). `explicit_add` (the `add_memory` path) is never down-graded — deliberate user content stays decision-eligible even when phrased casually. **Provenance:** every minted node records its originating envelope `kind` (`session_start` | `stop` | `post_tool_use` | `explicit_add`) in its `source` set (`src/extract/writer.ts` + `consumer.ts`), so pre-existing and future noise is auditable and selectively cleanable; the kind is re-validated defense-in-depth and is filter-safe (an envelope kind is never a valid `sub_projects` slug).
+
+### Fixed
+
+- **FR-ATBKZV** — Typed MCP tool `inputSchema` so schema-driven MCP clients can drive array-valued args. Previously every MCP tool was registered with an empty `z.looseObject({})` passthrough, so `tools/list` advertised zero argument properties; typed clients serialized array args (`search_memory.entities`, `types`, `sub_projects`) as strings and the handler's strict Zod rejected them as `invalid_args` — `search_memory` was effectively undrivable. `src/mcp/server.ts` now advertises each tool's real argument types over `tools/list` via a module-scoped `advertiseShape()` that maps each Zod field to `z.unknown().optional().meta(z.toJSONSchema(field))`, routed uniformly through the shared `reg` layer. The SDK therefore emits the correct JSON-Schema type (array/integer/…) but never preempts the handler — the `.optional()` is load-bearing (a bare `z.unknown()` is required in Zod 4 and would trip the SDK's own `-32602` before the handler runs). The handler-level `safeParse` stays the sole validation authority, so the `invalid_args` tool-error contract (AC-WSFVNP.10) is preserved byte-for-byte: wrong-typed and missing-required args still yield `invalid_args` with the Zod issue path, not a raw JSON-RPC `-32602`, and no DB/graph call is made. Genuinely no-arg tools advertise a valid empty object schema (no phantom placeholder property).
+
+Total test count at release: 601 tests, 0 failures, 0 errors.
+
 ## [0.6.0] — 2026-05-28 — "Oracle"
 
 ### Added
