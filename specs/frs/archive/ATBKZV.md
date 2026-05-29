@@ -1,8 +1,8 @@
 ---
 title: Typed MCP tool inputSchema (schema-driven clients can drive array args)
 milestone: M10
-status: active
-archived_at: null
+status: archived
+archived_at: 2026-05-29T11:54:11Z
 id: fr_01KSS7VW8F3AQDT7TB54ATBKZV
 created_at: 2026-05-29T06:48:36Z
 ---
