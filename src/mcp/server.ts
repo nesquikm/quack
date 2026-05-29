@@ -275,6 +275,43 @@ function wrapIngest<A>(
   };
 }
 
+// AC-ATBKZV.1/.3/.4 — advertise each tool's real argument TYPES over tools/list
+// so schema-driven MCP clients encode array/integer args correctly, WITHOUT
+// letting the SDK preempt the handler. Each field is advertised as `z.unknown()`
+// (accepts any input, so the SDK forwards the raw value to the handler and never
+// emits its own JSON-RPC -32602) carrying the field's real JSON-Schema type via
+// `.meta()`. The handler's strict `safeParse` (in wrap*) stays the sole
+// `invalid_args` authority (AC-WSFVNP.10). A no-arg `z.object({})` schema yields
+// an empty advertise shape ⇒ a valid empty object schema (AC-ATBKZV.4).
+//
+// Module-scoped (stateless, pure over the static tool schemas) so buildMcpServer
+// — rebuilt once per request — neither reallocates it nor re-derives schemas
+// through a fresh closure each call.
+function advertiseShape(schema: z.ZodType): z.ZodRawShape {
+  const shape = (schema as z.ZodObject<z.ZodRawShape>).shape;
+  if (!shape || typeof shape !== "object") return {};
+  const out: Record<string, z.ZodType> = {};
+  for (const [key, field] of Object.entries(shape)) {
+    try {
+      const { $schema: _drop, ...jsonType } = z.toJSONSchema(field as z.ZodType) as Record<string, unknown>;
+      // `.optional()` is load-bearing: a bare `z.unknown()` is REQUIRED in Zod 4,
+      // so the SDK would reject any call omitting the key with a -32602
+      // ("expected nonoptional, received undefined") before the handler runs —
+      // breaking AC-WSFVNP.10 / AC-ATBKZV.3. Optional + unknown ⇒ the SDK
+      // accepts any/absent input and the handler's safeParse stays the authority.
+      out[key] = z.unknown().optional().meta(jsonType as Parameters<z.ZodUnknown["meta"]>[0]);
+    } catch (err) {
+      // Unreachable for the current tool schemas (all string/array/integer/enum
+      // fields serialize cleanly). The warn surfaces an unexpected regression
+      // rather than silently shipping a type-less manifest field; the fallback
+      // keeps the field non-passthrough and handler-validated.
+      console.warn(`advertiseShape: z.toJSONSchema failed for field "${key}"; advertising untyped`, err);
+      out[key] = z.unknown().optional();
+    }
+  }
+  return out;
+}
+
 export function buildMcpServer(): McpServer {
   // Side-effect: ensure memory templates are in the registry before any
   // GraphAdapter.run call. Idempotent.
@@ -285,20 +322,17 @@ export function buildMcpServer(): McpServer {
     { capabilities: { tools: {} } },
   );
 
-  // Permissive passthrough schema: lets any object-shaped args reach the wrapper,
-  // which then runs the tool's real zod schema and emits the AC-mandated
-  // `invalid_args` tool error before any DB call. Required because the SDK
-  // doesn't forward args at all when `inputSchema` is omitted.
-  const passthroughSchema = z.looseObject({});
-
+  // advertiseShape (module scope, defined above) maps each tool's Zod fields to
+  // the typed advertise shape passed to mcp.registerTool (AC-ATBKZV.1/.3/.4).
   const reg = (
     name: string,
     description: string,
+    schema: z.ZodType,
     cb: (args: unknown, extra: unknown) => CallToolResult | Promise<CallToolResult>,
   ) => {
     mcp.registerTool(
       name,
-      { description, inputSchema: passthroughSchema },
+      { description, inputSchema: advertiseShape(schema) },
       cb as Parameters<typeof mcp.registerTool>[2],
     );
   };
@@ -306,61 +340,73 @@ export function buildMcpServer(): McpServer {
   reg(
     "register_user",
     "Admin-only. Create a member user and mint a one-time plaintext token bound to the _control_ project.",
+    registerUserSchema,
     wrap("register_user", registerUserSchema, registerUser as ToolHandler<{ username: string }>),
   );
   reg(
     "remove_user",
     "Admin-only. Delete a user; cascades to project_members and tokens. Refuses to remove the last admin or self.",
+    removeUserSchema,
     wrap("remove_user", removeUserSchema, removeUser as ToolHandler<{ username: string }>),
   );
   reg(
     "create_project",
     `Admin-only. Create a new project. Slug must match ${SLUG_RE_DESCRIPTION}; leading underscore is reserved.`,
+    createProjectSchema,
     wrap("create_project", createProjectSchema, createProject as ToolHandler<{ slug: string; display_name: string }>),
   );
   reg(
     "delete_project",
     "Admin-only. Delete a project (cascades) and queue graph-partition cleanup. Refuses _control_.",
+    deleteProjectSchema,
     wrap("delete_project", deleteProjectSchema, deleteProject as ToolHandler<{ slug: string }>),
   );
   reg(
     "add_member",
     "Admin-only. Add a user to a project at the given role and mint a one-time plaintext token bound to that pair.",
+    addMemberSchema,
     wrap("add_member", addMemberSchema, addMember as ToolHandler<{ username: string; project_slug: string; role: "admin" | "member" }>),
   );
   reg(
     "remove_member",
     "Admin-only. Remove a project membership and revoke that pair's active tokens. Returns revocation count.",
+    removeMemberSchema,
     wrap("remove_member", removeMemberSchema, removeMember as ToolHandler<{ username: string; project_slug: string }>),
   );
   reg(
     "revoke_token",
     "Admin-only. Revoke an active token by id. Uniform not_found for unknown / already-revoked (no oracle).",
+    revokeTokenSchema,
     wrap("revoke_token", revokeTokenSchema, revokeToken as ToolHandler<{ token_id: number }>),
   );
   reg(
     "list_projects",
     "Admin sees every project; non-admin sees only projects they are a member of.",
+    listProjectsSchema,
     wrap("list_projects", listProjectsSchema, listProjects as ToolHandler<Record<string, never>>),
   );
   reg(
     "list_users",
     "Admin-only. List every user as DTO (no token data).",
+    listUsersSchema,
     wrap("list_users", listUsersSchema, listUsers as ToolHandler<Record<string, never>>),
   );
   reg(
     "server_status",
     "Admin-only. Snapshot only — no streaming, no history. Returns uptime, queue stats (null in M2), error counts, and seeded counts.",
+    serverStatusSchema,
     wrap("server_status", serverStatusSchema, serverStatus as ToolHandler<Record<string, never>>),
   );
   reg(
     "run_cleanup_now",
     "Admin-only. Triggers an immediate sweep of pending_cleanup rows. Refuses with sweep_in_progress if a sweep is already running.",
+    runCleanupNowSchema,
     wrapAsync("run_cleanup_now", runCleanupNowSchema, runCleanupNow as (a: unknown, c: AuthContext, d: Database) => Promise<unknown>),
   );
   reg(
     "cleanup_status",
     "Admin-only. Returns pending_rows / stuck_rows / last_run / currently_running for the cleanup sweeper.",
+    cleanupStatusSchema,
     wrap("cleanup_status", cleanupStatusSchema, cleanupStatus as ToolHandler<Record<string, never>>),
   );
 
@@ -369,21 +415,25 @@ export function buildMcpServer(): McpServer {
   reg(
     "search_memory",
     `Search the project's memory graph by entity name (full-text + optional 1-hop expansion). ${MEMORY_CLAUSE}`,
+    searchMemorySchema,
     wrapMemory("search_memory", searchMemorySchema, searchMemory as MemoryToolHandler<unknown>),
   );
   reg(
     "get_neighbors",
     `Walk neighbors of a known node up to depth 3, filtered by edge type. ${MEMORY_CLAUSE}`,
+    getNeighborsSchema,
     wrapMemory("get_neighbors", getNeighborsSchema, getNeighbors as MemoryToolHandler<unknown>),
   );
   reg(
     "path_between",
     `Find the shortest path between two nodes in the project's memory graph (max 8 hops). ${MEMORY_CLAUSE}`,
+    pathBetweenSchema,
     wrapMemory("path_between", pathBetweenSchema, pathBetween as MemoryToolHandler<unknown>),
   );
   reg(
     "recent_decisions",
     `Most recent Decision nodes within a time window, newest first. ${MEMORY_CLAUSE}`,
+    recentDecisionsSchema,
     wrapMemory("recent_decisions", recentDecisionsSchema, recentDecisions as MemoryToolHandler<unknown>),
   );
 
@@ -393,6 +443,7 @@ export function buildMcpServer(): McpServer {
   reg(
     "ask_memory",
     `Plans a multi-step traversal over the project's memory graph to answer a question; requires QUACK_MODEL_* to be configured. ${MEMORY_CLAUSE}`,
+    askMemorySchema,
     wrapAsk("ask_memory", askMemorySchema, askMemory as AskToolHandler<unknown>),
   );
 
@@ -403,6 +454,7 @@ export function buildMcpServer(): McpServer {
       "Fire-and-forget — returns immediately. " +
       "Memories become available shortly via search_memory after server-side extraction completes. " +
       "No status polling — check via search_memory after a short delay.",
+    addMemorySchema,
     wrapIngest("add_memory", addMemorySchema, addMemory as IngestToolHandler<unknown>),
   );
 
