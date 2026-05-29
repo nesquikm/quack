@@ -2,6 +2,7 @@ import { buildHookRedactor } from "./redact";
 import { resolveConfig } from "./config";
 import { postEnvelope, type FetchLike } from "./post";
 import type { HookEnvelope } from "./shared/envelope";
+import { isMetaTool } from "./shared/meta_tools";
 
 const KNOWN_KINDS = new Set(["session_start", "stop", "post_tool_use"]);
 
@@ -29,6 +30,17 @@ export async function dispatchHook(opts: DispatchOptions): Promise<{ posted: boo
   }
   if (opts.payload === undefined || opts.payload === null) {
     return { posted: false, reason: "no_payload" };
+  }
+  // AC-Z1W6ED.1 — drop the agent's own meta/tool-search activity (a PostToolUse
+  // for a META_TOOLS tool) before egress, so introspection chatter never reaches
+  // /ingest or the cheap model. Fire-and-forget: no POST, clean exit.
+  // SessionStart / Stop / non-meta PostToolUse are unaffected.
+  if (
+    opts.kind === "post_tool_use" &&
+    typeof opts.payload === "object" &&
+    isMetaTool((opts.payload as { tool_name?: unknown }).tool_name)
+  ) {
+    return { posted: false, reason: "meta_tool" };
   }
   const redactor = buildHookRedactor(Bun.env);
   const { value: redactedPayload } = redactor.redact(opts.payload as Record<string, unknown>);

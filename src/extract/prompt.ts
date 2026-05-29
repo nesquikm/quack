@@ -125,6 +125,34 @@ Rules — non-negotiable:
 - Empty arrays are valid outputs for sessions with nothing extractable.
 - Do not include explanations, prose, or any text outside the JSON object.`;
 
+// AC-Z1W6ED.2/.3 — decision-worthiness gate. Governs `Decision` minting ONLY;
+// Entity/File/Symbol/Feedback extraction is unchanged. Pinned negative examples
+// (the SteamOS gaming opinion, the tool-search chatter) anchor the rubric so
+// casual conversation / opinions / tool-meta activity never become Decisions.
+export const DECISION_WORTHINESS_GATE = `DECISION-WORTHINESS GATE — apply ONLY to \`Decision\` nodes. Entity, File, Symbol, and Feedback extraction is UNCHANGED: always extract entities and files even when you withhold a Decision (denoise removes Decisions, not the entity graph).
+Mint a \`Decision\` ONLY for a deliberate, project-relevant choice or commitment — an architectural, technical, or process decision the team is actually adopting (e.g. "Use SQLite for the token store"; "Greg owns the auth rewrite").
+WITHHOLD \`Decision\` status from:
+- Casual conversation or personal opinions. Example: "SteamOS is a nicer gaming OS than Windows" is an opinion, NOT a project decision — do not mint a Decision (you may still extract entities like "SteamOS").
+- Tool / meta activity and tool-search chatter. Example: "Search for the mcp__quack__search_memory tool" is the agent's own introspection, NOT a decision — do not mint a Decision.
+- Speculation, open questions, or hypotheticals.
+When in doubt, OMIT the Decision but STILL extract any entities/files/symbols present.`;
+
+// AC-Z1W6ED.5 — `explicit_add` (the add_memory path) is deliberate user-submitted
+// content; it is never down-graded by the gate. A casually-phrased explicit_add
+// decision still mints a Decision.
+export const EXPLICIT_ADD_DECISION_OVERRIDE = `DELIBERATE USER CONTENT — this was explicitly submitted by the user via add_memory. Do NOT apply any decision-worthiness withholding gate to it: when it states a decision, mint the \`Decision\` even if phrased casually. User-submitted content is always decision-eligible.`;
+
+// AC-Z1W6ED.2/.5 — kind-aware system prompt. Passive hook kinds
+// (session_start / stop / post_tool_use) and the default get the
+// decision-worthiness gate; `explicit_add` gets the override instead so
+// deliberate user content is never down-graded.
+export function buildSystemPrompt(kind?: string): string {
+  if (kind === "explicit_add") {
+    return `${SYSTEM_PROMPT}\n\n${EXPLICIT_ADD_DECISION_OVERRIDE}`;
+  }
+  return `${SYSTEM_PROMPT}\n\n${DECISION_WORTHINESS_GATE}`;
+}
+
 export function buildUserPrompt(payload: unknown): string {
   // AC-41NXTZ.7 — explicit_add branch frames content as a user-asserted fact.
   // Byte-localized: hook-kind branches fall through to the legacy frame below.
